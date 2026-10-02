@@ -1,0 +1,8 @@
+{
+  "required": true,
+  "package": "com.cbc_more_content.gametest.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": ["GameTestServerMixin"],
+  "client": ["FontReloadRaceMixin"],
+  "injectors": {"defaultRequire": 1}
+}

@@ -1,0 +1,42 @@
+{
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": true,
+  "category": "misc",
+  "key": {
+    "C": {
+      "item": "createbigcannons:powder_charge"
+    },
+    "E": {
+      "item": "create:electron_tube"
+    },
+    "F": {
+      "item": "create:brass_sheet"
+    },
+    "G": {
+      "item": "create:precision_mechanism"
+    },
+    "P": {
+      "item": "create:sturdy_sheet"
+    },
+    "R": {
+      "item": "create:propeller"
+    },
+    "X": {
+      "tag": "createbigcannons:high_explosive_materials"
+    },
+    "Z": {
+      "item": "createbigcannons:impact_fuze"
+    }
+  },
+  "pattern": [
+    "  FFFFF  ",
+    " PXXXXXP ",
+    "RECXCXCGZ",
+    " PXXXXXP ",
+    "  FFFFF  "
+  ],
+  "result": {
+    "count": 1,
+    "id": "cbc_more_content:cruise_missile"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "variants": {
+    "facing=north,powered=false,sounding=false": {
+      "model": "cbc_more_content:block/siren"
+    },
+    "facing=north,powered=false,sounding=true": {
+      "model": "cbc_more_content:block/siren"
+    },
+    "facing=north,powered=true,sounding=false": {
+      "model": "cbc_more_content:block/siren_sounding"
+    },
+    "facing=north,powered=true,sounding=true": {
+      "model": "cbc_more_content:block/siren_sounding"
+    },
+    "facing=east,powered=false,sounding=false": {
+      "model": "cbc_more_content:block/siren",
+      "y": 90
+    },
+    "facing=east,powered=false,sounding=true": {
+      "model": "cbc_more_content:block/siren",
+      "y": 90
+    },
+    "facing=east,powered=true,sounding=false": {
+      "model": "cbc_more_content:block/siren_sounding",
+      "y": 90
+    },
+    "facing=east,powered=true,sounding=true": {
+      "model": "cbc_more_content:block/siren_sounding",
+      "y": 90
+    },
+    "facing=south,powered=false,sounding=false": {
+      "model": "cbc_more_content:block/siren",
+      "y": 180
+    },
+    "facing=south,powered=false,sounding=true": {
+      "model": "cbc_more_content:block/siren",
+      "y": 180
+    },
+    "facing=south,powered=true,sounding=false": {
+      "model": "cbc_more_content:block/siren_sounding",
+      "y": 180
+    },
+    "facing=south,powered=true,sounding=true": {
+      "model": "cbc_more_content:block/siren_sounding",
+      "y": 180
+    },
+    "facing=west,powered=false,sounding=false": {
+      "model": "cbc_more_content:block/siren",
+      "y": 270
+    },
+    "facing=west,powered=false,sounding=true": {
+      "model": "cbc_more_content:block/siren",
+      "y": 270
+    },
+    "facing=west,powered=true,sounding=false": {
+      "model": "cbc_more_content:block/siren_sounding",
+      "y": 270
+    },
+    "facing=west,powered=true,sounding=true": {
+      "model": "cbc_more_content:block/siren_sounding",
+      "y": 270
+    }
+  }
+}

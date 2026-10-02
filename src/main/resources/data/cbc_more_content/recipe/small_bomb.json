@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "N": {
+      "tag": "c:ingots/cast_iron"
+    },
+    "X": {
+      "tag": "createbigcannons:high_explosive_materials"
+    },
+    "I": {
+      "tag": "c:plates/iron"
+    },
+    "C": {
+      "item": "createbigcannons:powder_charge"
+    }
+  },
+  "pattern": [
+    "NXN",
+    "IXI",
+    "ICI"
+  ],
+  "result": {
+    "count": 1,
+    "id": "cbc_more_content:small_bomb"
+  }
+}

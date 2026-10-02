@@ -1,6 +1,7 @@
 
 
 **Create Warnautics CE** expands Create Big Cannons with bombs, mines, missiles, and more. 
+  (This is a fork of Create: Warnautics. Discord is https://discord.gg/zBmD7mMYK)
 
 # Main features
 

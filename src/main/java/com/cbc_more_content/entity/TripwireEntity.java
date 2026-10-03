@@ -30,20 +30,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import org.joml.Vector3d;
 
-/**
- * A tripwire strung between two blocks, at whatever angle they happen to sit at.
- * <p>
- * It parts when something walks <em>through</em> it, not when something merely touches
- * it: the wire tracks which side of its own plane each nearby body is on, and a change of
- * side is the trigger. Brush it and step back the way you came and nothing happens, and
- * no amount of sprinting can skip it, because the side simply reads the other way round
- * on the next tick.
- * <p>
- * That replaced a scheme that accumulated tension along a guessed pull direction. It kept
- * failing in a different way each time it was tuned — never catching, never letting go,
- * clinging for blocks — because every one of those states had to be inferred. There is
- * nothing here to infer.
- */
+/** A tripwire between two blocks that triggers when an entity crosses its plane. */
 public class TripwireEntity extends Entity {
     /** Longest run between two posts. */
     public static final int MAX_SPAN = 8;
@@ -84,11 +71,7 @@ public class TripwireEntity extends Entity {
             SynchedEntityData.defineId(TripwireEntity.class, EntityDataSerializers.FLOAT);
 
     private int slack;
-    /**
-     * Which side of the wire each nearby body was on last tick. A sign change is the
-     * trigger, which is why nothing here has to remember tension, direction or how
-     * fast anyone was going.
-     */
+    /** Side of the wire each nearby entity occupied on the previous tick. */
     private final java.util.Map<Integer, Double> sides = new java.util.HashMap<>();
 
     public TripwireEntity(EntityType<? extends TripwireEntity> type, Level level) {

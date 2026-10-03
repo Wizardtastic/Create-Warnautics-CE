@@ -82,9 +82,13 @@ public final class MineExplosionHandler {
                 CBCConfigs.server().munitions.damageRestriction.get().explosiveInteraction());
         CreateBigCannons.handleCustomExplosion(level, pressure);
 
-        // CBC uses the zero block radius above for its entity lookup too, so the
-        // pressure explosion itself cannot find the player standing on the mine.
-        applyPressure(level, damageSource, pos, entityPower);
+        // The zero block radius also prevents CBC from finding entities in this blast.
+        BlastCover.beginDetonation();
+        try {
+            applyPressure(level, damageSource, pos, entityPower);
+        } finally {
+            BlastCover.endDetonation();
+        }
 
         spawnFragmentFan(level, pos);
         BombBlastFx.waterBurst(level, pos, entityPower);

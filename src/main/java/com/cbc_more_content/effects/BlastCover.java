@@ -2,6 +2,7 @@ package com.cbc_more_content.effects;
 
 import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.longs.LongSets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -14,20 +15,11 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * How much of a blast reaches an entity through whatever is in the way.
- * <p>
- * Vanilla only asks whether a straight line is clear, so a pane of glass and a metre of
- * reinforced concrete stop a blast equally well. This walks each sample ray and charges
- * the explosion resistance of everything it passes through.
- * <p>
- * Blocks the same blast is about to destroy are excluded: the wall that fails absorbs
- * its share, breaks, and the rest carries through.
- * <p>
- * Fluids pass free: water transmits a blast — muffled with distance, not stopped — so
- * it never counts as cover, or a swimmer beside an underwater burst would be untouchable.
+ * Estimates blast exposure by accumulating the resistance of blocks along sample rays.
+ * Blocks destroyed by this blast do not count as cover, and fluids are ignored.
  */
 public final class BlastCover {
-    /** Ray step in blocks — fine enough to catch a single pane. */
+    /** Distance between samples along each ray. */
     private static final double STEP = 0.5D;
 
     private static final double HALF_ABSORB = 12.0D;
@@ -36,18 +28,24 @@ public final class BlastCover {
     private static final int MAX_STEPS_PER_DETONATION = 60_000;
     private static final int MAX_STEPS_PER_RAY = 160;
 
-    private static final ThreadLocal<int[]> STEP_BUDGET = new ThreadLocal<>();
+    private static final ThreadLocal<ArrayDeque<int[]>> STEP_BUDGET = ThreadLocal.withInitial(ArrayDeque::new);
 
     public static final Result OPEN = new Result(1.0D, 1.0D);
 
     private BlastCover() {}
 
     public static void beginDetonation() {
-        STEP_BUDGET.set(new int[] {MAX_STEPS_PER_DETONATION});
+        STEP_BUDGET.get().push(new int[] {MAX_STEPS_PER_DETONATION});
     }
 
     public static void endDetonation() {
-        STEP_BUDGET.remove();
+        ArrayDeque<int[]> budgets = STEP_BUDGET.get();
+        if (!budgets.isEmpty()) {
+            budgets.pop();
+        }
+        if (budgets.isEmpty()) {
+            STEP_BUDGET.remove();
+        }
     }
 
     public static int samplesForDistance(double distance, double entityRadius) {
@@ -78,18 +76,18 @@ public final class BlastCover {
             ServerLevel level, Vec3 center, Entity entity, LongSet destroyed, int samplesPerAxis) {
         AABB box = entity.getBoundingBox();
         int perAxis = Mth.clamp(samplesPerAxis, 1, FULL_SAMPLES);
-        int[] budget = STEP_BUDGET.get();
+        ArrayDeque<int[]> budgets = STEP_BUDGET.get();
+        int[] budget = budgets.peek();
+        if (budget == null) {
+            STEP_BUDGET.remove();
+        }
         if (budget != null && budget[0] <= 0) {
             return OPEN;
-        }
-        int rays = perAxis * perAxis * perAxis;
-        int slice = budget == null ? Integer.MAX_VALUE : Math.min(budget[0], rays * MAX_STEPS_PER_RAY);
-        if (budget != null) {
-            budget[0] -= slice;
         }
 
         double transmissionSum = 0.0D;
         int open = 0;
+        int rays = perAxis * perAxis * perAxis;
         BlastScene scene = new BlastScene(level, center, center.distanceTo(box.getCenter()) + box.getSize() + 1);
 
         for (int xi = 0; xi < perAxis; xi++) {
@@ -98,7 +96,7 @@ public final class BlastCover {
                 double y = sampleAxis(box.minY, box.maxY, yi, perAxis);
                 for (int zi = 0; zi < perAxis; zi++) {
                     double z = sampleAxis(box.minZ, box.maxZ, zi, perAxis);
-                    double absorbed = absorbAlong(level, center, x, y, z, destroyed, scene, slice);
+                    double absorbed = absorbAlong(level, center, x, y, z, destroyed, scene, budget);
                     if (absorbed <= 0.0D) {
                         open++;
                     }
@@ -107,8 +105,7 @@ public final class BlastCover {
             }
         }
 
-        int samples = rays;
-        return new Result(Mth.clamp(transmissionSum / samples, 0.0D, 1.0D), open / (double) samples);
+        return new Result(Mth.clamp(transmissionSum / rays, 0.0D, 1.0D), open / (double) rays);
     }
 
     private static double sampleAxis(double min, double max, int index, int count) {
@@ -126,7 +123,7 @@ public final class BlastCover {
             double toZ,
             LongSet destroyed,
             BlastScene scene,
-            int stepBudget) {
+            int[] stepBudget) {
         double dx = toX - from.x;
         double dy = toY - from.y;
         double dz = toZ - from.z;
@@ -135,10 +132,12 @@ public final class BlastCover {
             return 0.0D;
         }
         int steps = Math.min(Mth.ceil(distance / STEP), MAX_STEPS_PER_RAY);
-        if (stepBudget <= 0) {
-            return 0.0D;
+        if (stepBudget != null) {
+            if (stepBudget[0] <= 0) {
+                return 0.0D;
+            }
+            steps = Math.min(steps, stepBudget[0] + 1);
         }
-        steps = Math.min(steps, stepBudget);
         double sx = dx / steps;
         double sy = dy / steps;
         double sz = dz / steps;
@@ -154,6 +153,9 @@ public final class BlastCover {
                 }
                 double resistance = block.state().getExplosionResistance(level, block.pos(), null);
                 absorbed += Math.min(Math.max(0, resistance), MAX_BLOCK_RESISTANCE) * STEP;
+            }
+            if (stepBudget != null) {
+                stepBudget[0]--;
             }
         }
         return absorbed;

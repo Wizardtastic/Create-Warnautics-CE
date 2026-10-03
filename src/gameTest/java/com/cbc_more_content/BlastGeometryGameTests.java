@@ -3,6 +3,7 @@ package com.cbc_more_content;
 import com.cbc_more_content.block.LandMineBlock;
 import com.cbc_more_content.bomb.BombSize;
 import com.cbc_more_content.damage.BombDamageSource;
+import com.cbc_more_content.effects.BlastCover;
 import com.cbc_more_content.effects.BlastPropagation;
 import com.cbc_more_content.effects.WarnauticsExplosion;
 import com.cbc_more_content.registry.ModBlocks;
@@ -18,6 +19,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
@@ -69,6 +71,32 @@ public class BlastGeometryGameTests {
     private static WarnauticsExplosion explosion(ServerLevel level, Vec3 center) {
         return new WarnauticsExplosion(
                 level, null, BombDamageSource.create(level), center, 11, 14, BombSize.BlastVolume.SPHERE);
+    }
+
+    @GameTest(template = "empty", batch = "geometry_cover", timeoutTicks = 100)
+    public static void solidBlocksReduceBlastTransmission(GameTestHelper helper) {
+        ServerLevel level = helper.getLevel();
+        BlockPos center = helper.absolutePos(CENTER);
+        var cow = EntityType.COW.create(level);
+        Vec3 origin = center.getCenter().add(-6, 0, 0);
+        cow.setPos(origin.add(4, 0, 0));
+        level.addFreshEntity(cow);
+        BlastCover.beginDetonation();
+        try {
+            BlastCover.Result open =
+                    BlastCover.evaluate(level, origin, cow, it.unimi.dsi.fastutil.longs.LongSets.emptySet(), 3);
+            for (int y = 0; y < 3; y++) {
+                level.setBlock(center.west(3).above(y), Blocks.BEDROCK.defaultBlockState(), Block.UPDATE_ALL);
+            }
+            BlastCover.Result covered =
+                    BlastCover.evaluate(level, origin, cow, it.unimi.dsi.fastutil.longs.LongSets.emptySet(), 3);
+            helper.assertTrue(open.transmission() > covered.transmission(), "A wall should reduce blast transmission");
+            helper.assertTrue(covered.transmission() < 0.5, "A bedrock wall should block most of the blast");
+        } finally {
+            BlastCover.endDetonation();
+            cow.discard();
+        }
+        helper.succeed();
     }
 
     @GameTest(template = "empty", batch = "geometry_veto", timeoutTicks = 100)

@@ -486,9 +486,6 @@ public class DropBombBlock extends Block implements IWrenchable, ChainExplosiveB
                 }
                 if (current.getValue(RELEASE_DELAY) != delayTicks) {
                     level.setBlock(cursor, current.setValue(RELEASE_DELAY, delayTicks), Block.UPDATE_CLIENTS);
-                }
-                // The clicked block is walked by the DOWN pass only, so it is counted once.
-                if (dir == Direction.DOWN || !cursor.equals(clicked)) {
                     changed++;
                 }
                 BlockPos nextPos = cursor.relative(dir);

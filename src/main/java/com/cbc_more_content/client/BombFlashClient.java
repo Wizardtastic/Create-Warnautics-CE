@@ -15,9 +15,6 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.fml.ModList;
 
-/**
- * Active bomb-flash pulses (client-only). Veil path owns real lights + post bloom.
- */
 @OnlyIn(Dist.CLIENT)
 public final class BombFlashClient {
     private static final int MAX_ACTIVE_FLASHES = 24;
@@ -46,7 +43,7 @@ public final class BombFlashClient {
         float intensity = Mth.clamp(payload.intensity(), 0.15f, 1.65f);
         Vec3 pos = new Vec3(payload.x(), payload.y(), payload.z());
 
-        Flash mergeTarget = findMergeTarget(level, pos, size);
+        Flash mergeTarget = findMergeTarget(level, pos);
         if (mergeTarget != null) {
             mergeTarget.merge(pos, intensity, life, size);
             return;
@@ -88,7 +85,7 @@ public final class BombFlashClient {
         return READ_ONLY_FLASHES;
     }
 
-    private static Flash findMergeTarget(ClientLevel level, Vec3 pos, BombSize size) {
+    private static Flash findMergeTarget(ClientLevel level, Vec3 pos) {
         // Only co-located rounds share a pulse; separate chain charges retain their own origin.
         double mergeRadius = 0.75D;
         double mergeRadiusSqr = mergeRadius * mergeRadius;

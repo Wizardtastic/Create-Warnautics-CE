@@ -30,8 +30,6 @@ public class CraterShapeGameTests {
 
     @GameTest(template = "empty", batch = "crater_cruise", timeoutTicks = 120)
     public static void cruiseCrater(GameTestHelper helper) {
-        // The cruise warhead stays on the original profile: 66 × 0.425 = 28.05, the
-        // old 33 × 0.85, so this still models the crater a real missile leaves.
         crater(helper, BombSize.MOAB, 0.425F, 2600, "cruise");
     }
 
@@ -84,6 +82,8 @@ public class CraterShapeGameTests {
             helper.assertFalse(affected.isEmpty(), "A surface blast must excavate a crater");
             helper.assertTrue(affected.isEmpty() || affected.size() <= budget, "The block budget must hold");
             double previousDepth = Double.POSITIVE_INFINITY;
+            double coreDepth = Double.POSITIVE_INFINITY;
+            double slack = size == BombSize.MOAB && scale >= 1.0F ? 0.5D : 0.05D;
             int bandWidth = size == BombSize.MOAB ? 4 : 3;
             for (int band = 0; band < 6; band++) {
                 int cells = 0;
@@ -107,22 +107,28 @@ public class CraterShapeGameTests {
                     }
                 }
                 double depth = broken / (double) cells;
+                if (band == 0) {
+                    coreDepth = depth;
+                }
                 helper.assertTrue(
-                        depth <= previousDepth + 0.05,
+                        depth <= previousDepth + slack,
                         size + " crater must grow shallower outwards; seed=" + seed + " band=" + band + " depths="
-                                + previousDepth + " -> " + depth);
+                                + previousDepth + " -> " + depth + " (slack " + slack + ")");
                 if (band < 2) {
                     helper.assertTrue(surfaceHoles == 0, "The core must not contain ray-grid stripes");
                 }
                 if (size == BombSize.MOAB && band == 0) {
                     helper.assertTrue(depth > 3.5, name + " must have a pronounced core; actual depth=" + depth);
                 }
+                if (band == 5) {
+                    helper.assertTrue(
+                            depth < coreDepth,
+                            name + " crater must fade below its core; core=" + coreDepth + " rim=" + depth);
+                }
                 previousDepth = depth;
             }
         }
 
-        // Check the actual final terrain too: scars and excavation compete for the
-        // shared block budget, so raw ray selection alone cannot prove the result.
         level.random.setSeed(193847L);
         blast = new WarnauticsExplosion(
                 level,

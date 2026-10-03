@@ -3,6 +3,7 @@ package com.cbc_more_content.effects;
 import com.cbc_more_content.bomb.BombSize;
 import com.cbc_more_content.config.WarnauticsConfig;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.Nullable;
@@ -21,7 +22,6 @@ import rbasamoyai.createbigcannons.multiloader.NetworkPlatform;
 import rbasamoyai.createbigcannons.network.ClientboundCBCExplodePacket;
 import rbasamoyai.createbigcannons.remix.CustomExplosion;
 
-/** A single server explosion with explicit geometry; vanilla finalization owns drops and block callbacks. */
 public final class WarnauticsExplosion extends CustomExplosion.Impl {
     private final float basePower;
     private final BombSize.BlastVolume volume;
@@ -49,7 +49,6 @@ public final class WarnauticsExplosion extends CustomExplosion.Impl {
                 WarnauticsConfig.maxBlocksPerDetonation());
     }
 
-    /** A warhead that shares a charge's profile but not its crater budget passes its own. */
     public WarnauticsExplosion(
             ServerLevel level,
             @Nullable Entity source,
@@ -83,15 +82,7 @@ public final class WarnauticsExplosion extends CustomExplosion.Impl {
         BlastImpulse impulses = new BlastImpulse();
         server.gameEvent(getDirectSourceEntity(), GameEvent.EXPLODE, center());
         if (canDamageTerrain() && getBlockInteraction() != BlockInteraction.KEEP) {
-            getToBlow()
-                    .addAll(BlastPropagation.gather(
-                            server,
-                            this,
-                            basePower,
-                            volume,
-                            seed,
-                            blockBudget,
-                            impulses));
+            getToBlow().addAll(BlastPropagation.gather(server, this, basePower, volume, seed, blockBudget, impulses));
             getToBlow()
                     .addAll(BlastGlassShatter.gather(
                             server,
@@ -125,13 +116,13 @@ public final class WarnauticsExplosion extends CustomExplosion.Impl {
         double reach = getEntityRadius() * 2.0D;
         affectedEntities.addAll(
                 server.getEntities((Entity) null, new AABB(center(), center()).inflate(reach), Entity::isAlive));
-        var protectedBlocks = new java.util.HashSet<>(getToBlow());
+        var protectedBlocks = new HashSet<>(getToBlow());
         NeoForge.EVENT_BUS.post(new ExplosionEvent.Detonate(server, this, affectedEntities));
-        protectedBlocks.removeAll(getToBlow());
+        var survivingBlocks = new HashSet<>(getToBlow());
+        protectedBlocks.removeAll(survivingBlocks);
         impulses.apply(protectedBlocks);
     }
 
-    /** Only removed blocks expose entities and produce debris; scarred ground still provides cover. */
     public List<BlockPos> destroyedBlocks() {
         return getToBlow().stream()
                 .filter(pos -> !surfaceChanges.containsKey(pos))
@@ -163,7 +154,6 @@ public final class WarnauticsExplosion extends CustomExplosion.Impl {
     @Override
     public void sendExplosionToClient(ServerPlayer player) {
         Vec3 knock = getHitPlayers().getOrDefault(player, Vec3.ZERO);
-        // Block changes already travel in chunk packets. Plot positions do not fit CBC's relative-byte block list.
         NetworkPlatform.sendToClientPlayer(
                 new ClientboundCBCExplodePacket(
                         x,

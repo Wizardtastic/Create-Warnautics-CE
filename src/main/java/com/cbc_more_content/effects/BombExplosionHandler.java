@@ -41,8 +41,8 @@ public final class BombExplosionHandler {
         var target = SableDropCompat.resolveWorldBlastChecked(level, pos);
         level = target.level();
         pos = target.pos();
-        detonateInternal(level, source, damageSource, pos, blockPower, entityPower, size, size.blockBudget(),
-                FxStyle.NORMAL);
+        detonateInternal(
+                level, source, damageSource, pos, blockPower, entityPower, size, size.blockBudget(), FxStyle.NORMAL);
     }
 
     /** Same blast, but the caller pins the terrain budget instead of the charge's own. */

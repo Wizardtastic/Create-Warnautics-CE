@@ -109,8 +109,13 @@ public class SeaMineBlockEntity extends BlockEntity implements BlockEntitySubLev
         }
         Vec3 center = worldPosition(server, pos);
         // A floating mine can have its centre in air while the lower casing remains wet.
-        mine.ageInWater = Math.max(mine.ageInWater, state.getValue(SeaMineBlock.OXIDATION) * OXIDATION_TICKS_PER_STAGE);
-        if (touchesWater(server, center) && mine.ageInWater < 3 * OXIDATION_TICKS_PER_STAGE) {
+        if (!state.getValue(SeaMineBlock.WAXED)) {
+            mine.ageInWater =
+                    Math.max(mine.ageInWater, state.getValue(SeaMineBlock.OXIDATION) * OXIDATION_TICKS_PER_STAGE);
+        }
+        if (!state.getValue(SeaMineBlock.WAXED)
+                && touchesWater(server, center)
+                && mine.ageInWater < 3 * OXIDATION_TICKS_PER_STAGE) {
             mine.ageInWater++;
             int stage = mine.ageInWater / OXIDATION_TICKS_PER_STAGE;
             if (state.getValue(SeaMineBlock.OXIDATION) != stage) {
@@ -163,11 +168,11 @@ public class SeaMineBlockEntity extends BlockEntity implements BlockEntitySubLev
         return false;
     }
 
+    /** Operator test hook. Production ageing is exclusively driven by wet server ticks. */
     public int corrosionAge() {
         return this.ageInWater;
     }
 
-    /** Operator test hook. Production ageing is exclusively driven by wet server ticks. */
     public void setCorrosionAge(int ticks) {
         this.ageInWater = Math.clamp(ticks, 0, 3 * OXIDATION_TICKS_PER_STAGE);
         if (this.level instanceof ServerLevel server) {

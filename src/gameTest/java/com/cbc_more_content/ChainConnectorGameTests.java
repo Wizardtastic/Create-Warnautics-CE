@@ -208,6 +208,27 @@ public class ChainConnectorGameTests {
     }
 
     @GameTest(template = "empty", batch = "chain_connector_sable", timeoutTicks = 100)
+    public static void connectorsCanBePlacedOnSablePhysicsObject(GameTestHelper helper) {
+        var level = helper.getLevel();
+        BlockPos support = helper.absolutePos(new BlockPos(5, 8, 5));
+        level.setBlockAndUpdate(support, Blocks.STONE.defaultBlockState());
+        var body = SubLevelAssemblyHelper.assembleBlocks(
+                level, support, List.of(support), new BoundingBox3i(support, support));
+        BlockPos localSupport = body.getPlot().getCenterBlock();
+        BlockPos placed = localSupport.above();
+        FakePlayer player = player(helper);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.CHAIN_CONNECTOR.get()));
+        var result = player.getMainHandItem().getItem().useOn(context(player, localSupport, Direction.UP));
+        helper.assertTrue(result.consumesAction(), "Connector places on a sublevel physics block");
+        helper.assertTrue(
+                level.getBlockState(placed).is(ModBlocks.CHAIN_CONNECTOR.get()),
+                "Placement stores the connector next to its Sable support in the plot");
+        helper.assertTrue(holder(helper, placed) != null, "Placed Sable connector initializes rope behavior");
+        level.removeBlock(placed, false);
+        level.removeBlock(localSupport, false);
+        helper.succeed();
+    }
+
     public static void ownConnectorsKeepTypeAndChainAcrossSaveAndSublevelAssembly(GameTestHelper helper) {
         var level = helper.getLevel();
         var a = anchor(helper, new BlockPos(5, 8, 5), ModBlocks.CHAIN_CONNECTOR.get());

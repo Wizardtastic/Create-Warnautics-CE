@@ -17,9 +17,12 @@ import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -43,6 +46,41 @@ public class SeaMineGameTests {
                 SubLevelAssemblyHelper.assembleBlocks(level, world, List.of(world), new BoundingBox3i(world, world));
         level.setBlock(world, Blocks.WATER.defaultBlockState(), Block.UPDATE_ALL);
         return (SeaMineBlockEntity) level.getBlockEntity(body.getPlot().getCenterBlock());
+    }
+
+    @GameTest(template = "empty", batch = "sea_wax", timeoutTicks = 100)
+    public static void honeycombWaxingStopsCorrosionAndPersists(GameTestHelper helper) {
+        basin(helper);
+        ServerLevel level = helper.getLevel();
+        BlockPos pos = helper.absolutePos(CENTER);
+        level.setBlock(pos, ModBlocks.SEA_MINE.get().defaultBlockState(), Block.UPDATE_ALL);
+        FakePlayer player = new FakePlayer(
+                level, new com.mojang.authlib.GameProfile(java.util.UUID.randomUUID(), "sea-mine-wax-test"));
+        ItemStack honeycomb = new ItemStack(Items.HONEYCOMB, 2);
+        player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, honeycomb);
+        SeaMineBlockEntity mine = (SeaMineBlockEntity) level.getBlockEntity(pos);
+        mine.setCorrosionAge(100);
+        var result = level.getBlockState(pos)
+                .useItemOn(
+                        honeycomb,
+                        level,
+                        player,
+                        net.minecraft.world.InteractionHand.MAIN_HAND,
+                        new net.minecraft.world.phys.BlockHitResult(
+                                pos.getCenter(), net.minecraft.core.Direction.UP, pos, false));
+        helper.assertTrue(result.consumesAction(), "Honeycomb waxes the sea mine");
+        helper.assertTrue(honeycomb.getCount() == 1, "Waxing consumes one honeycomb");
+        helper.assertTrue(level.getBlockState(pos).getValue(SeaMineBlock.WAXED), "Wax is stored on the block state");
+        for (int i = 0; i < 40; i++) {
+            SeaMineBlockEntity.tick(level, pos, level.getBlockState(pos), mine);
+        }
+        helper.assertTrue(mine.corrosionAge() == 100, "Waxed mine retains its corrosion age while submerged");
+        CompoundTag saved = mine.saveWithoutMetadata(level.registryAccess());
+        helper.assertTrue(saved.getInt("WaterAge") == 100, "Saved mine retains its corrosion age");
+        helper.assertTrue(
+                level.getBlockState(pos).getValue(SeaMineBlock.WAXED), "Wax remains set on the saved block state");
+        level.removeBlock(pos, false);
+        helper.succeed();
     }
 
     @GameTest(template = "empty", batch = "sea_corrosion_surface", timeoutTicks = 100)

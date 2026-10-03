@@ -14,7 +14,14 @@ import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.ItemInteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
@@ -34,6 +41,7 @@ import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -55,17 +63,21 @@ public class SeaMineBlock extends BaseEntityBlock implements SimpleWaterloggedBl
     public static final MapCodec<SeaMineBlock> CODEC = simpleCodec(SeaMineBlock::new);
     public static final IntegerProperty OXIDATION = IntegerProperty.create("oxidation", 0, 3);
     public static final BooleanProperty WATERLOGGED = BlockStateProperties.WATERLOGGED;
+    public static final BooleanProperty WAXED = BooleanProperty.create("waxed");
     private static final VoxelShape SHAPE = Block.box(1, 1, 1, 15, 15, 15);
 
     public SeaMineBlock(Properties properties) {
         super(properties);
-        this.registerDefaultState(
-                this.stateDefinition.any().setValue(OXIDATION, 0).setValue(WATERLOGGED, false));
+        this.registerDefaultState(this.stateDefinition
+                .any()
+                .setValue(OXIDATION, 0)
+                .setValue(WATERLOGGED, false)
+                .setValue(WAXED, false));
     }
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(OXIDATION, WATERLOGGED);
+        builder.add(OXIDATION, WATERLOGGED, WAXED);
     }
 
     @Nullable
@@ -74,6 +86,28 @@ public class SeaMineBlock extends BaseEntityBlock implements SimpleWaterloggedBl
         return WaterPlacement.sourceAt(context.getLevel(), context.getClickedPos())
                 ? this.defaultBlockState().setValue(WATERLOGGED, true)
                 : null;
+    }
+
+    @Override
+    protected ItemInteractionResult useItemOn(
+            ItemStack stack,
+            BlockState state,
+            Level level,
+            BlockPos pos,
+            Player player,
+            InteractionHand hand,
+            BlockHitResult hit) {
+        if (!stack.is(Items.HONEYCOMB) || state.getValue(WAXED)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        }
+        if (!level.isClientSide) {
+            level.setBlock(pos, state.setValue(WAXED, true), Block.UPDATE_CLIENTS);
+            level.playSound(null, pos, SoundEvents.HONEYCOMB_WAX_ON, SoundSource.BLOCKS, 1.0F, 1.0F);
+            if (!player.getAbilities().instabuild) {
+                player.getItemInHand(hand).shrink(1);
+            }
+        }
+        return ItemInteractionResult.sidedSuccess(level.isClientSide);
     }
 
     @Override

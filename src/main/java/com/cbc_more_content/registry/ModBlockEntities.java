@@ -4,6 +4,7 @@ import com.cbc_more_content.CBCMoreContent;
 import com.cbc_more_content.block.Aim9BlockEntity;
 import com.cbc_more_content.block.C4BlockEntity;
 import com.cbc_more_content.block.CruiseMissileBlockEntity;
+import com.cbc_more_content.block.HardpointBlockEntity;
 import com.cbc_more_content.block.SeaMineBlockEntity;
 import com.cbc_more_content.block.SirenBlockEntity;
 import dev.simulated_team.simulated.content.blocks.rope.rope_connector.RopeConnectorBlockEntity;
@@ -31,24 +32,23 @@ public final class ModBlockEntities {
             BLOCK_ENTITIES.register("c4", () -> BlockEntityType.Builder.of(C4BlockEntity::new, ModBlocks.C4.get())
                     .build(null));
 
-    /** Guidance package on the middle cell of a placed missile. */
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CruiseMissileBlockEntity>> CRUISE_MISSILE =
             BLOCK_ENTITIES.register("cruise_missile", () -> BlockEntityType.Builder.of(
                             CruiseMissileBlockEntity::new, ModBlocks.CRUISE_MISSILE.get())
                     .build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<HardpointBlockEntity>> HARDPOINT =
+            BLOCK_ENTITIES.register(
+                    "hardpoint", () -> BlockEntityType.Builder.of(HardpointBlockEntity::new, ModBlocks.HARDPOINT.get())
+                            .build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SeaMineBlockEntity>> SEA_MINE =
             BLOCK_ENTITIES.register(
                     "sea_mine", () -> BlockEntityType.Builder.of(SeaMineBlockEntity::new, ModBlocks.SEA_MINE.get())
                             .build(null));
 
-    /** What an air-raid post is watching for, and how long it has left to wail. */
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SirenBlockEntity>> SIREN =
-            BLOCK_ENTITIES.register("siren", () -> BlockEntityType.Builder
-                    // Through a lambda rather than a constructor reference: a Create
-                    // machine is handed its own type. Read off the block being placed
-                    // rather than off the holder, which cannot name itself here.
-                    .of(
+            BLOCK_ENTITIES.register("siren", () -> BlockEntityType.Builder.of(
                             (pos, state) -> new SirenBlockEntity(ModBlockEntities.SIREN.get(), pos, state),
                             ModBlocks.SIREN.get())
                     .build(null));

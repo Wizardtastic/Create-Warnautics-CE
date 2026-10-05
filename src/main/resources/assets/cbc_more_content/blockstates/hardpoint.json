@@ -1,0 +1,30 @@
+{
+  "variants": {
+    "facing=up": {
+      "model": "cbc_more_content:block/hardpoint"
+    },
+    "facing=down": {
+      "model": "cbc_more_content:block/hardpoint",
+      "x": 180
+    },
+    "facing=north": {
+      "model": "cbc_more_content:block/hardpoint",
+      "x": 90
+    },
+    "facing=south": {
+      "model": "cbc_more_content:block/hardpoint",
+      "x": 90,
+      "y": 180
+    },
+    "facing=west": {
+      "model": "cbc_more_content:block/hardpoint",
+      "x": 90,
+      "y": 270
+    },
+    "facing=east": {
+      "model": "cbc_more_content:block/hardpoint",
+      "x": 90,
+      "y": 90
+    }
+  }
+}

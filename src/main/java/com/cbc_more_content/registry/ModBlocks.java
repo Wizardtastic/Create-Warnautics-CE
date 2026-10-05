@@ -6,6 +6,7 @@ import com.cbc_more_content.block.C4Block;
 import com.cbc_more_content.block.ChainConnectorBlock;
 import com.cbc_more_content.block.CruiseMissileBlock;
 import com.cbc_more_content.block.DropBombBlock;
+import com.cbc_more_content.block.HardpointBlock;
 import com.cbc_more_content.block.LandMineBlock;
 import com.cbc_more_content.block.MoabBlock;
 import com.cbc_more_content.block.SeaMineBlock;
@@ -67,6 +68,9 @@ public final class ModBlocks {
 
     public static final DeferredBlock<Aim9Block> AIM9 =
             BLOCKS.register("aim9", () -> new Aim9Block(bombProps(MapColor.METAL, 1.0f)));
+
+    public static final DeferredBlock<HardpointBlock> HARDPOINT =
+            BLOCKS.register("hardpoint", () -> new HardpointBlock(bombProps(MapColor.METAL, 1.5f)));
 
     public static final DeferredBlock<C4Block> C4 = BLOCKS.register(
             "c4",

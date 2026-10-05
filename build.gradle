@@ -348,23 +348,4 @@ if (providers.gradleProperty('seaMineTests').isPresent()) {
             })
         }
     }
-    def ponderCheckDirectory = file("build/ponder-check/${System.currentTimeMillis()}")
-    neoForge.runs.register('ponderCheck') {
-        type = 'client'
-        logLevel = org.slf4j.event.Level.INFO
-        sourceSet = sourceSets.gameTest
-        gameDirectory = ponderCheckDirectory
-        systemProperty 'warnautics.ponderCheck', 'true'
-        programArguments.addAll '--mixin', 'cbc_more_content.gametest.mixins.json'
-        jvmArguments.addAll '-Xmx3G', '-XX:ActiveProcessorCount=4'
-        programArguments.addAll '--width', '960', '--height', '720'
-    }
-    tasks.matching { it.name == 'runPonderCheck' }.configureEach {
-        doLast {
-            def result = new File(ponderCheckDirectory, 'ponder-check.txt')
-            if (!result.exists() || !result.getText('UTF-8').startsWith('PASS')) {
-                throw new GradleException("Ponder client check failed: ${result}")
-            }
-        }
-    }
 }

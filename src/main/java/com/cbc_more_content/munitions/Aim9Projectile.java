@@ -1,7 +1,9 @@
 package com.cbc_more_content.munitions;
 
+import com.cbc_more_content.bomb.BombSize;
 import com.cbc_more_content.compat.SableDropCompat;
 import com.cbc_more_content.registry.ModSounds;
+import com.cbc_more_content.util.DropBombUtil;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import net.minecraft.core.particles.ParticleTypes;
@@ -25,13 +27,12 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-/** One cold-launched interceptor, with lead pursuit and a fuse for its assigned airborne target. */
 public class Aim9Projectile extends Entity {
     public static final int EJECT_TICKS = 14;
-    private static final int MOTOR_TICKS = 240;
+    public static final int MOTOR_TICKS = 140;
+
     private static final double APPROACH_RANGE = 36;
     private static final double RECOVERY_TURN_RATE = .14;
-    // Keep adjacent flight chunks entity-ticking before crossing their boundary.
     private static final int TICKET_DISTANCE = 4;
     private static final EntityDataAccessor<Boolean> POWERED =
             SynchedEntityData.defineId(Aim9Projectile.class, EntityDataSerializers.BOOLEAN);
@@ -82,13 +83,17 @@ public class Aim9Projectile extends Entity {
         return targetId;
     }
 
-    public void launch(CruiseMissileProjectile target, Vec3 inheritedVelocity) {
-        targetId = target.getUUID();
-        lastTargetVelocity = target.getDeltaMovement();
+    public void launch(@Nullable Entity target, Vec3 inheritedVelocity) {
+        launch(target, inheritedVelocity, new Vec3(0, 1, 0));
+    }
+
+    public void launch(@Nullable Entity target, Vec3 inheritedVelocity, Vec3 ejectDirection) {
+        targetId = target == null ? null : target.getUUID();
+        lastTargetVelocity = target == null ? Vec3.ZERO : target.getDeltaMovement();
         carrierVelocity = inheritedVelocity;
-        // Ejection follows world gravity, including when the rack is on a banked carrier.
-        setDeltaMovement(inheritedVelocity.add(0, .95, 0));
-        face(new Vec3(0, 1, 0));
+        Vec3 eject = ejectDirection.lengthSqr() < 1.0E-6D ? new Vec3(0, 1, 0) : ejectDirection.normalize();
+        setDeltaMovement(inheritedVelocity.add(eject.scale(.95)));
+        face(eject);
         yRotO = getYRot();
         xRotO = getXRot();
     }
@@ -125,13 +130,15 @@ public class Aim9Projectile extends Entity {
             }
         } else {
             motorTicks++;
-            if (target == null || !target.isAlive()) {
-                if (++lostTicks > 12) {
-                    finish(null, position(), false);
-                    return;
+            if (targetId != null) {
+                if (target == null || !target.isAlive()) {
+                    if (++lostTicks > 12) {
+                        finish(null, position(), false);
+                        return;
+                    }
+                } else {
+                    lostTicks = 0;
                 }
-            } else {
-                lostTicks = 0;
             }
             if (motorTicks > MOTOR_TICKS || isInWater()) {
                 finish(null, position(), false);
@@ -143,7 +150,6 @@ public class Aim9Projectile extends Entity {
             if (target != null && target.isAlive()) {
                 updateApproach(target, heading, motion, speed);
                 if (recovering && recoveryTurning) {
-                    // A wider, slower turn draws a return arc instead of snapping onto a target behind us.
                     speed *= .88;
                 }
                 Vec3 aim = recovering && !recoveryTurning
@@ -180,8 +186,6 @@ public class Aim9Projectile extends Entity {
             stop = hull;
         }
         CruiseMissileProjectile struck = null;
-        // This proximity fuse belongs only to the assigned target and only after ignition.
-        // Ordinary nearby missiles do not trip it.
         if (isPowered() && target instanceof CruiseMissileProjectile cruise && target.isAlive()) {
             Vec3 relative = motion.subtract(target.getDeltaMovement());
             Vec3 offset = target.position().subtract(from);
@@ -220,8 +224,6 @@ public class Aim9Projectile extends Entity {
         if (recovering) {
             recoveryTicks++;
             if (!recoveryTurning) {
-                // Turning immediately after a near miss leaves the target inside the minimum
-                // turning circle. Extend beyond it before starting the return, including a fast tail chase.
                 recoveryTurning = recoveryTicks >= 6 && distance >= 44;
                 return;
             }
@@ -279,8 +281,7 @@ public class Aim9Projectile extends Entity {
             if (target != null && target.isAlive()) {
                 target.hurt(server.damageSources().explosion(this, this), 40);
             }
-            // Fragmentation burst in the air; not a second MOAB-sized terrain warhead.
-            server.explode(this, at.x, at.y, at.z, 2, Level.ExplosionInteraction.NONE);
+            DropBombUtil.detonateAsReleasedProjectile(BombSize.MEDIUM, server, at);
             server.sendParticles(ParticleTypes.SMOKE, at.x, at.y, at.z, 22, .8, .8, .8, .1);
         } else {
             server.sendParticles(ParticleTypes.SMOKE, at.x, at.y, at.z, 6, .2, .2, .2, .02);

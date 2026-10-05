@@ -28,7 +28,6 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import org.lwjgl.opengl.GL11;
 
-/** Disposable single-player world: compares the real scene before/after the exhaust render stage. */
 @EventBusSubscriber(modid = CBCMoreContent.MOD_ID, value = Dist.CLIENT)
 public final class MissileFlightClientCheck {
     private static boolean creating;
@@ -129,8 +128,6 @@ public final class MissileFlightClientCheck {
                 var missile = new CruiseMissileProjectile(ModEntityTypes.CRUISE_MISSILE.get(), level);
                 missile.setPos(0, 112, 0);
                 missile.launch(new Vec3(0, 1, 0));
-                // GPU snapshots can stall the render thread while the integrated server keeps ticking.
-                // Extend only this visual fixture's fuel so a real 190-tick cutoff is not a false failure.
                 var fixture = missile.saveWithoutId(new net.minecraft.nbt.CompoundTag());
                 fixture.putInt("Fuel", 1200);
                 missile.load(fixture);

@@ -14,15 +14,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 
-/**
- * Create Radar bridge, over its published tracking API.
- * <p>
- * Reached by reflection rather than by a compile dependency, because Radar is optional
- * and only ships from source. The surface used here is small and public — the
- * {@code RadarSource} interface ({@code getContacts}, {@code isRunning}, {@code getRange})
- * and {@code RadarContact} ({@code getId}, {@code getPosition}, {@code getVelocity}) — so
- * this is a real contract and not a guess at internals.
- */
 public final class RadarCompat {
     public static final String MOD_ID = "create_radar";
     private static final String SOURCE_CLASS = "com.happysg.radar.api.tracking.RadarSource";
@@ -53,10 +44,8 @@ public final class RadarCompat {
         return ModList.get().isLoaded(MOD_ID);
     }
 
-    /** One track as the missile sees it. */
     public record Contact(String id, Vec3 position, Vec3 velocity) {}
 
-    /** True if this block entity is something Radar considers a source of tracks. */
     public static boolean isController(@Nullable BlockEntity blockEntity) {
         if (blockEntity == null || !resolve()) {
             return false;
@@ -64,16 +53,6 @@ public final class RadarCompat {
         return sourceClass != null && sourceClass.isInstance(blockEntity);
     }
 
-    /**
-     * True for any Create Radar block, whether or not it is a valid pairing target.
-     * <p>
-     * The mod's Network Controller is the block its own tutorials point players at, but
-     * it only ever hands its picture to the mod's own weapon-network wiring — it does not
-     * implement {@code RadarSource}, so there is no published contract for a third-party
-     * mod to read a track off it, only private fields that would break on every update.
-     * This exists so a click on it can be told apart from a click on a real radar dish,
-     * rather than being read as a random block and silently ignored.
-     */
     public static boolean isRadarModBlock(@Nullable BlockEntity blockEntity) {
         if (blockEntity == null || !loaded()) {
             return false;
@@ -82,14 +61,111 @@ public final class RadarCompat {
         return key != null && MOD_ID.equals(key.getNamespace());
     }
 
-    /**
-     * The track worth intercepting, or null when the network is dark, empty or looking
-     * at nothing in range.
-     * <p>
-     * Scored on speed first and range second, because an interceptor exists for the
-     * thing that is moving. Picking purely by distance sent missiles at whatever drifted
-     * closest, which on a busy map is a parked plot rather than the hull bearing down.
-     */
+    private static final String MONITOR_CLASS = "com.happysg.radar.block.monitor.MonitorBlockEntity";
+    private static final String TARGETING_CONFIG_CLASS =
+            "com.happysg.radar.block.behavior.networks.config.TargetingConfig";
+
+    private static boolean monitorResolved;
+
+    @Nullable
+    private static Class<?> monitorClass;
+
+    @Nullable
+    private static Method monitorGetController;
+
+    @Nullable
+    private static Method monitorGetSelectedEntity;
+
+    @Nullable
+    private static Method monitorGetTargetPos;
+
+    @Nullable
+    private static Object targetingDefault;
+
+    public static boolean isMonitor(@Nullable BlockEntity blockEntity) {
+        if (blockEntity == null || !resolveMonitor()) {
+            return false;
+        }
+        return monitorClass != null && monitorClass.isInstance(blockEntity);
+    }
+
+    @Nullable
+    public static BlockPos monitorController(Level level, BlockPos clicked) {
+        BlockEntity controller = monitorControllerBe(level, clicked);
+        return controller == null ? null : controller.getBlockPos();
+    }
+
+    @Nullable
+    public static String selectedContact(Level level, BlockPos monitor) {
+        BlockEntity controller = monitorControllerBe(level, monitor);
+        if (controller == null || level.isClientSide) {
+            return null;
+        }
+        try {
+            Object id = monitorGetSelectedEntity.invoke(controller);
+            return id instanceof String name && !name.isBlank() ? name : null;
+        } catch (Throwable t) {
+            CBCMoreContent.LOGGER.debug("Radar screen selection read failed: {}", t.toString());
+            return null;
+        }
+    }
+
+    @Nullable
+    public static Vec3 selectedTargetPos(Level level, BlockPos monitor) {
+        BlockEntity controller = monitorControllerBe(level, monitor);
+        if (controller == null || level.isClientSide) {
+            return null;
+        }
+        try {
+            Object pos = monitorGetTargetPos.invoke(controller, targetingDefault);
+            return pos instanceof Vec3 at ? at : null;
+        } catch (Throwable t) {
+            CBCMoreContent.LOGGER.debug("Radar screen target read failed: {}", t.toString());
+            return null;
+        }
+    }
+
+    @Nullable
+    private static BlockEntity monitorControllerBe(Level level, BlockPos monitor) {
+        BlockEntity bound = level.getBlockEntity(monitor);
+        if (!isMonitor(bound)) {
+            return null;
+        }
+        try {
+            Object controller = monitorGetController.invoke(bound);
+            return controller instanceof BlockEntity be ? be : bound;
+        } catch (Throwable t) {
+            CBCMoreContent.LOGGER.debug("Radar screen controller resolve failed: {}", t.toString());
+            return bound;
+        }
+    }
+
+    private static boolean resolveMonitor() {
+        if (monitorResolved) {
+            return monitorClass != null;
+        }
+        monitorResolved = true;
+        if (!loaded()) {
+            return false;
+        }
+        try {
+            Class<?> config = Class.forName(TARGETING_CONFIG_CLASS);
+            monitorClass = Class.forName(MONITOR_CLASS);
+            monitorGetController = monitorClass.getMethod("getController");
+            monitorGetSelectedEntity = monitorClass.getMethod("getSelectedEntity");
+            monitorGetTargetPos = monitorClass.getMethod("getTargetPos", config);
+            targetingDefault = config.getField("DEFAULT").get(null);
+            return true;
+        } catch (Throwable t) {
+            CBCMoreContent.LOGGER.info(
+                    "Create Radar is present but its screen API did not resolve; "
+                            + "hardpoint target relay stays inert. {}",
+                    t.toString());
+            monitorClass = null;
+            return false;
+        }
+    }
+
     @Nullable
     public static Contact bestContact(Level level, BlockPos controller, Vec3 from, InterceptSettings settings) {
         Contact best = null;
@@ -117,7 +193,6 @@ public final class RadarCompat {
         return best;
     }
 
-    /** A specific track by id, so a missile keeps chasing the same thing. */
     @Nullable
     public static Contact contactById(Level level, BlockPos controller, String id) {
         for (Contact contact : contacts(level, controller)) {
@@ -128,15 +203,6 @@ public final class RadarCompat {
         return null;
     }
 
-    /**
-     * How far around a bound block to look for the actual radars.
-     * <p>
-     * The block players are told to build their network around is the Network Controller,
-     * which is not itself a radar and publishes nothing a third-party mod can read. The
-     * dishes wired into it stand near it, so binding to the controller and then sweeping
-     * its surroundings for real {@code RadarSource} block entities is what makes the
-     * obvious thing to click actually work.
-     */
     private static final int SOURCE_SCAN_RADIUS = 48;
 
     private static final int SOURCE_CACHE_TICKS = 10;
@@ -163,7 +229,6 @@ public final class RadarCompat {
         return out;
     }
 
-    /** The radar block entities a bound position speaks for. */
     private static List<BlockEntity> sourcesNear(Level level, BlockPos controller) {
         BlockEntity bound = level.getBlockEntity(controller);
         if (isController(bound)) {
@@ -206,11 +271,6 @@ public final class RadarCompat {
         return found;
     }
 
-    /**
-     * A sweep of up to 49 chunks' block entities on every guidance tick is the single
-     * most expensive thing an in-flight intercept does, and the dish layout around a
-     * controller does not change tick to tick.
-     */
     @Nullable
     private static List<BlockEntity> cacheIfFresh(Level level, BlockPos controller) {
         if (cachedSources == null

@@ -8,6 +8,7 @@ import com.cbc_more_content.item.ChainCoilItem;
 import com.cbc_more_content.item.CruiseMissileItem;
 import com.cbc_more_content.item.DetonatorItem;
 import com.cbc_more_content.item.DropBombItem;
+import com.cbc_more_content.item.HardpointItem;
 import com.cbc_more_content.item.SeaMineItem;
 import com.cbc_more_content.item.TargetDesignatorItem;
 import com.cbc_more_content.item.TripwireCoilItem;
@@ -76,6 +77,9 @@ public final class ModItems {
 
     public static final DeferredItem<CruiseMissileItem> AIM9 = ITEMS.register(
             "aim9", () -> new CruiseMissileItem(ModBlocks.AIM9.get(), new Item.Properties().stacksTo(8)));
+
+    public static final DeferredItem<HardpointItem> HARDPOINT =
+            ITEMS.register("hardpoint", () -> new HardpointItem(ModBlocks.HARDPOINT.get(), new Item.Properties()));
 
     public static final DeferredItem<Item> MUSIC_DISC_BREAKER_OF_SKIES = ITEMS.register(
             "music_disc_breaker_of_skies",

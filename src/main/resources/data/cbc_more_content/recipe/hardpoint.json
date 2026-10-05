@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "I": {
+      "tag": "c:plates/iron"
+    },
+    "C": {
+      "tag": "c:ingots/copper"
+    },
+    "S": {
+      "item": "create:shaft"
+    }
+  },
+  "pattern": [
+    "C C",
+    " S ",
+    "I I"
+  ],
+  "result": {
+    "count": 1,
+    "id": "cbc_more_content:hardpoint"
+  }
+}

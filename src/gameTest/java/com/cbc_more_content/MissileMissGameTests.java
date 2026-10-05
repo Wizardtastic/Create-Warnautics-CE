@@ -219,7 +219,8 @@ public class MissileMissGameTests {
                 h.assertTrue(target.getUUID().equals(round[0].targetId()), "Return retains the assigned target");
                 if (round[0].isRemoved()) {
                     h.assertTrue(
-                            before.getInt("MotorTicks") < 240, "Second approach ends in interception, not exhaustion");
+                            before.getInt("MotorTicks") < Aim9Projectile.MOTOR_TICKS,
+                            "Second approach ends in interception, not exhaustion");
                 }
             }
             h.assertTrue(
@@ -312,7 +313,8 @@ public class MissileMissGameTests {
                                 + target.saveWithoutId(new CompoundTag()).getInt("Fuel"));
                 h.assertTrue(
                         target.saveWithoutId(new CompoundTag()).getInt("Fuel") > 0
-                                && round.saveWithoutId(new CompoundTag()).getInt("MotorTicks") < 240,
+                                && round.saveWithoutId(new CompoundTag()).getInt("MotorTicks")
+                                        < Aim9Projectile.MOTOR_TICKS,
                         "Interception happens before either motor expires");
             } finally {
                 NeoForge.EVENT_BUS.unregister(recorder);
@@ -335,7 +337,7 @@ public class MissileMissGameTests {
                 h.getLevel().getEntity(target.getUUID()) == target, "Flight fixture is registered for UUID guidance");
         var round = hotRound(h, target, at, new UUID(0, 2));
         var tag = round.saveWithoutId(new CompoundTag());
-        tag.putInt("MotorTicks", 230);
+        tag.putInt("MotorTicks", Aim9Projectile.MOTOR_TICKS - 10);
         tag.putBoolean("Recovering", true);
         tag.putBoolean("ApproachChecked", true);
         tag.putInt("ApproachNumber", 1);
@@ -347,7 +349,7 @@ public class MissileMissGameTests {
             h.assertTrue(round.isRemoved() && !round.isPowered(), "Motor stops when the original fuel budget expires");
             h.assertTrue(target.isAlive(), "An unreachable target is not killed on fuel exhaustion");
             h.assertTrue(
-                    round.saveWithoutId(new CompoundTag()).getInt("MotorTicks") == 241,
+                    round.saveWithoutId(new CompoundTag()).getInt("MotorTicks") == Aim9Projectile.MOTOR_TICKS + 1,
                     "Return did not refill the motor");
         } finally {
             round.discard();

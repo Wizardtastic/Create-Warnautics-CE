@@ -37,7 +37,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 
 public class CruiseMissileProjectile extends Entity {
-    public static final int FUEL_TICKS = 190;
+    public static final int FUEL_TICKS = 1200;
 
     private static final double CRUISE_SPEED = 1.4D;
     private static final double GRAVITY = 0.085D;
@@ -65,9 +65,6 @@ public class CruiseMissileProjectile extends Entity {
     private static final float JINK_CHANCE = 0.4f;
     private static final int SHAKEN_TICKS = 26;
 
-    // The warhead stays pinned to the original MOAB profile (33/56) at 85 percent.
-    // BombSize.MOAB has since doubled and owns a far larger crater budget, so the
-    // missile no longer derives from it — a cruise strike must not excavate like one.
     private static final float BLOCK_POWER = 28.05f;
 
     private static final float ENTITY_POWER = 47.6f;
@@ -93,6 +90,9 @@ public class CruiseMissileProjectile extends Entity {
 
     @Nullable
     private java.util.UUID salvoId;
+
+    @Nullable
+    private java.util.UUID targetEntityId;
 
     private int salvoIndex;
     private int salvoCount = 1;
@@ -121,6 +121,19 @@ public class CruiseMissileProjectile extends Entity {
 
     public void setController(@Nullable BlockPos controller) {
         this.targeting.setController(controller);
+    }
+
+    public void setContact(@Nullable String contact) {
+        this.targeting.setContact(contact);
+    }
+
+    public void setTargetEntity(@Nullable Entity target) {
+        this.targetEntityId = target == null ? null : target.getUUID();
+    }
+
+    @Nullable
+    public java.util.UUID targetEntityId() {
+        return this.targetEntityId;
     }
 
     public void setGuidance(Guidance guidance, @Nullable BlockPos target, int lockedSubLevel) {
@@ -243,8 +256,6 @@ public class CruiseMissileProjectile extends Entity {
             motion = this.steer(motion.subtract(this.carrierVelocity).normalize(), aim)
                     .scale(this.speedFor(aim))
                     .add(this.carrierVelocity);
-            // Keep the ship's momentum through rack separation, then let the motor take
-            // over. A permanent carrier offset distorted every selected speed profile.
             this.carrierVelocity = this.carrierVelocity.scale(0.92D);
             if (this.tickCount % 4 == 0) {
                 this.level()
@@ -356,7 +367,6 @@ public class CruiseMissileProjectile extends Entity {
             double angle = this.salvoIndex * (Math.PI * 2 / this.salvoCount);
             double radius = Math.max(3.5, this.salvoCount * .8) * Mth.clamp((distance - 5) / 24, 0, 1);
             if (this.flightProfile != MissileFlightProfile.EVASIVE && distance > TERMINAL_RANGE) {
-                // Hold a corridor beside the shared route, instead of a distant offset endpoint.
                 double along = Mth.clamp(
                         this.position().subtract(this.salvoOrigin).dot(forward) + 30,
                         0,
@@ -385,7 +395,6 @@ public class CruiseMissileProjectile extends Entity {
                         CruiseMissileProjectile.class,
                         this.getBoundingBox().inflate(8),
                         e -> e != this && e.isAlive())) {
-            // Predict closest approach, rather than swerving only after contact is inevitable.
             Vec3 offset = this.position().subtract(other.position());
             Vec3 relative = this.getDeltaMovement().subtract(other.getDeltaMovement());
             double time =
@@ -408,13 +417,9 @@ public class CruiseMissileProjectile extends Entity {
     }
 
     private void fuseOnTarget(Vec3 from, @Nullable Vec3 aim) {
-        // A locked physical hull uses the swept collision fuse. Its bounding-box
-        // centre is a guidance point, not a reason to explode in empty air outside a small craft.
         if (this.detonated || aim == null || this.tickCount <= ARMING_TICKS || this.trackingHull || this.shaken > 0) {
             return;
         }
-        // Coordinates and radar points still have a proximity fuse. Test the whole
-        // travelled segment so a fast missile cannot step over it or fuse on a wide miss.
         Vec3 span = this.position().subtract(from);
         double lengthSqr = span.lengthSqr();
         double part = lengthSqr < 1.0E-8D ? 0 : Mth.clamp(aim.subtract(from).dot(span) / lengthSqr, 0, 1);
@@ -427,6 +432,13 @@ public class CruiseMissileProjectile extends Entity {
     @Nullable
     private Vec3 aimPoint() {
         this.trackingHull = false;
+        if (this.targetEntityId != null) {
+            Entity hunted = this.level() instanceof ServerLevel server ? server.getEntity(this.targetEntityId) : null;
+            if (hunted == null || !hunted.isAlive()) {
+                return null;
+            }
+            return this.dispersedAim(hunted.position(), 1.8);
+        }
         if (this.targeting.guidance() == Guidance.INTERCEPT) {
             Vec3 tracked = this.radarAim();
             return tracked == null ? null : this.dispersedAim(tracked, 1.8);
@@ -450,7 +462,6 @@ public class CruiseMissileProjectile extends Entity {
         return target.add(MissileGuidanceError.cruiseOffset(this.getUUID(), radius));
     }
 
-    /** The motor recovers over several ticks instead of erasing a pressure impulse immediately. */
     public void applyBlastImpulse(Vec3 impulse) {
         this.blastDrift = this.blastDrift.add(impulse);
         this.setDeltaMovement(this.getDeltaMovement().add(impulse));
@@ -671,6 +682,7 @@ public class CruiseMissileProjectile extends Entity {
         this.blastDrift =
                 new Vec3(tag.getDouble("BlastDriftX"), tag.getDouble("BlastDriftY"), tag.getDouble("BlastDriftZ"));
         this.targeting.readFrom(tag);
+        this.targetEntityId = tag.hasUUID("TargetEntity") ? tag.getUUID("TargetEntity") : null;
         this.salvoId = tag.hasUUID("Salvo") ? tag.getUUID("Salvo") : null;
         this.salvoIndex = Math.clamp(tag.getInt("SalvoIndex"), 0, 15);
         this.salvoCount = Math.clamp(tag.getInt("SalvoCount"), 1, 16);
@@ -693,6 +705,9 @@ public class CruiseMissileProjectile extends Entity {
         tag.putDouble("BlastDriftY", this.blastDrift.y);
         tag.putDouble("BlastDriftZ", this.blastDrift.z);
         this.targeting.writeTo(tag);
+        if (this.targetEntityId != null) {
+            tag.putUUID("TargetEntity", this.targetEntityId);
+        }
         if (this.salvoId != null) {
             tag.putUUID("Salvo", this.salvoId);
         }

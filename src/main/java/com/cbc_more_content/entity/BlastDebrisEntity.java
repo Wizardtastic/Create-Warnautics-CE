@@ -20,7 +20,6 @@ import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
-/** Cosmetic, bounded wreckage. The server resolves collisions; clients only interpolate. */
 public class BlastDebrisEntity extends Entity {
     private static final EntityDataAccessor<BlockState> BLOCK_STATE =
             SynchedEntityData.defineId(BlastDebrisEntity.class, EntityDataSerializers.BLOCK_STATE);
@@ -46,7 +45,6 @@ public class BlastDebrisEntity extends Entity {
         return create((Level) level, state, pos, velocity);
     }
 
-    /** Also used by the isolated Ponder world; no entity is inserted or networked here. */
     public static BlastDebrisEntity create(Level level, BlockState state, Vec3 pos, Vec3 velocity) {
         var debris = new BlastDebrisEntity(ModEntityTypes.BLAST_DEBRIS.get(), level);
         debris.entityData.set(BLOCK_STATE, state);

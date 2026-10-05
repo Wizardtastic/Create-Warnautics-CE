@@ -53,7 +53,9 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
             state = state.setValue(
                     DropBombBlock.CASSETTE, DropBombBlock.clampCassette(DropBombItem.getCassette(payload)));
         }
-        Direction facing = hardpoint.getBlockState().getValue(HardpointBlock.FACING);
+        BlockState mount = hardpoint.getBlockState();
+        Direction facing = mount.getValue(HardpointBlock.FACING);
+        Direction nose = mount.hasProperty(HardpointBlock.NOSE) ? mount.getValue(HardpointBlock.NOSE) : Direction.NORTH;
 
         pose.pushPose();
         MountShift shift = mountShiftFor(block);
@@ -61,8 +63,10 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
             pose.translate(0.0D, -shift.down(), -shift.forward());
             pose.translate(0.5D, 0.5D, 0.5D);
             if (block instanceof CruiseMissileBlock) {
-                pose.mulPose(Axis.YP.rotationDegrees(-90));
-            } else if (!(block instanceof Aim9Block)) {
+                rotateCruise(pose, nose);
+            } else if (block instanceof Aim9Block) {
+                rotateAim9(pose, nose);
+            } else {
                 pose.mulPose(Axis.XP.rotationDegrees(-90));
                 if (isMoab(block)) {
                     pose.mulPose(Axis.YP.rotationDegrees(-90));

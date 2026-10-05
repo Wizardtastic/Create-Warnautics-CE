@@ -30,6 +30,9 @@ import net.minecraft.world.phys.Vec3;
 public class Aim9Projectile extends Entity {
     public static final int EJECT_TICKS = 14;
     public static final int MOTOR_TICKS = 140;
+    public static final int DROP_TICKS = 10;
+
+    private static final double DROP_SPEED = 0.6D;
 
     private static final double APPROACH_RANGE = 36;
     private static final double RECOVERY_TURN_RATE = .14;
@@ -42,6 +45,8 @@ public class Aim9Projectile extends Entity {
     private UUID targetId;
 
     private int ejectTicks = EJECT_TICKS;
+    private boolean dropped;
+
     private int motorTicks;
     private int lostTicks;
     private Vec3 carrierVelocity = Vec3.ZERO;
@@ -98,6 +103,19 @@ public class Aim9Projectile extends Entity {
         xRotO = getXRot();
     }
 
+    public void drop(@Nullable Entity target, Vec3 inheritedVelocity, Vec3 forward) {
+        targetId = target == null ? null : target.getUUID();
+        lastTargetVelocity = target == null ? Vec3.ZERO : target.getDeltaMovement();
+        carrierVelocity = inheritedVelocity;
+        Vec3 nose = forward.lengthSqr() < 1.0E-6D ? new Vec3(0, 1, 0) : forward.normalize();
+        dropped = true;
+        ejectTicks = DROP_TICKS;
+        setDeltaMovement(inheritedVelocity.add(0.0D, -DROP_SPEED, 0.0D));
+        face(nose);
+        yRotO = getYRot();
+        xRotO = getXRot();
+    }
+
     @Override
     public void tick() {
         super.tick();
@@ -146,7 +164,12 @@ public class Aim9Projectile extends Entity {
             }
             double progress = Mth.clamp(motorTicks / 20.0, 0, 1);
             double speed = .65 + 4.85 * progress * progress * (3 - 2 * progress);
-            Vec3 heading = motion.subtract(carrierVelocity).normalize();
+            Vec3 heading = dropped
+                    ? Vec3.directionFromRotation(getXRot(), getYRot())
+                    : motion.subtract(carrierVelocity).normalize();
+            if (dropped) {
+                carrierVelocity = Vec3.ZERO;
+            }
             if (target != null && target.isAlive()) {
                 updateApproach(target, heading, motion, speed);
                 if (recovering && recoveryTurning) {
@@ -211,7 +234,9 @@ public class Aim9Projectile extends Entity {
             return;
         }
         setPos(to);
-        face(motion);
+        if (!dropped || motorTicks > 0) {
+            face(motion);
+        }
     }
 
     private void updateApproach(Entity target, Vec3 heading, Vec3 motion, double speed) {
@@ -361,6 +386,7 @@ public class Aim9Projectile extends Entity {
     protected void readAdditionalSaveData(CompoundTag tag) {
         targetId = tag.hasUUID("Target") ? tag.getUUID("Target") : null;
         ejectTicks = Mth.clamp(tag.getInt("EjectTicks"), 0, EJECT_TICKS);
+        dropped = tag.getBoolean("Dropped");
         motorTicks = Mth.clamp(tag.getInt("MotorTicks"), 0, MOTOR_TICKS + 1);
         lostTicks = tag.getInt("LostTicks");
         carrierVelocity = new Vec3(tag.getDouble("CarrierX"), tag.getDouble("CarrierY"), tag.getDouble("CarrierZ"));
@@ -385,6 +411,7 @@ public class Aim9Projectile extends Entity {
             tag.putUUID("Target", targetId);
         }
         tag.putInt("EjectTicks", ejectTicks);
+        tag.putBoolean("Dropped", dropped);
         tag.putInt("MotorTicks", motorTicks);
         tag.putInt("LostTicks", lostTicks);
         tag.putDouble("CarrierX", carrierVelocity.x);

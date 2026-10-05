@@ -5,6 +5,8 @@ import com.cbc_more_content.block.C4Block;
 import com.cbc_more_content.block.CruiseMissileBlock;
 import com.cbc_more_content.block.CruiseMissileBlockEntity;
 import com.cbc_more_content.block.DropBombBlock;
+import com.cbc_more_content.block.HardpointBlock;
+import com.cbc_more_content.block.HardpointBlockEntity;
 import com.cbc_more_content.block.SirenBlock;
 import com.cbc_more_content.compat.RadarCompat;
 import com.cbc_more_content.network.OpenRadarSettingsPayload;
@@ -34,12 +36,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-/**
- * Settings key. Right-click a placed bomb to open its release-interval dial.
- * <p>
- * Replaces the old sneak-and-click cycling, which forced players to guess the current
- * interval and step through all six presets to reach the one they wanted.
- */
 public class BombSettingsKeyItem extends Item {
     public BombSettingsKeyItem(Properties properties) {
         super(properties);
@@ -52,17 +48,11 @@ public class BombSettingsKeyItem extends Item {
         BlockState state = level.getBlockState(pos);
         ItemStack key = context.getItemInHand();
 
-        // Clicking anything belonging to Create Radar arms the key rather than opening
-        // anything: from here on it is a binding tool until it is told otherwise. The
-        // Network Controller counts, even though it is not a radar itself — the missile
-        // resolves the dishes around it when it goes looking for a picture.
         var radarBlockEntity = level.getBlockEntity(pos);
         if (RadarCompat.isRadarModBlock(radarBlockEntity)) {
             if (level.isClientSide) {
                 return InteractionResult.SUCCESS;
             }
-            // Sneaking opens the network's intercept conditions instead of arming the
-            // key, so setting a battery up and re-tuning it are the same tool.
             Player player = context.getPlayer();
             if (player != null && player.isShiftKeyDown()) {
                 openRadarSettings(level, pos, player);
@@ -114,26 +104,30 @@ public class BombSettingsKeyItem extends Item {
             return InteractionResult.sidedSuccess(level.isClientSide);
         }
         if (state.getBlock() instanceof C4Block) {
-            // The keypad comes first either way: on an idle charge it sets the arming
-            // code, on a live one it is the only way to stop the fuse.
             if (level.isClientSide) {
                 openC4CodeScreen(pos, state.getValue(C4Block.STATE) != C4Block.Fuse.IDLE);
             }
             return InteractionResult.sidedSuccess(level.isClientSide);
+        }
+        if (state.getBlock() instanceof HardpointBlock) {
+            if (level.getBlockEntity(pos) instanceof HardpointBlockEntity be) {
+                openBundleDial(level, pos, be);
+                return InteractionResult.sidedSuccess(level.isClientSide);
+            }
+            return InteractionResult.PASS;
         }
         if (!(state.getBlock() instanceof DropBombBlock bomb) || !bomb.allowsCassette()) {
             return InteractionResult.PASS;
         }
 
         if (level.isClientSide) {
-            openScreen(pos, state.getValue(DropBombBlock.RELEASE_DELAY), state.getValue(DropBombBlock.CASSETTE));
+            openScreen(pos, state.getValue(DropBombBlock.RELEASE_DELAY), state.getValue(DropBombBlock.CASSETTE), false);
         } else {
             level.playSound(null, pos, SoundEvents.ITEM_FRAME_ROTATE_ITEM, SoundSource.BLOCKS, 0.5f, 1.4f);
         }
         return InteractionResult.sidedSuccess(level.isClientSide);
     }
 
-    /** Sneaking with an armed key puts it back to being an ordinary settings key. */
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack key = player.getItemInHand(hand);
@@ -144,7 +138,6 @@ public class BombSettingsKeyItem extends Item {
         return InteractionResultHolder.sidedSuccess(key, level.isClientSide());
     }
 
-    /** Sends the network's current conditions to the operator so the panel opens filled in. */
     private static void openRadarSettings(Level level, BlockPos controller, Player player) {
         if (!(level instanceof ServerLevel server) || !(player instanceof ServerPlayer viewer)) {
             return;
@@ -153,7 +146,6 @@ public class BombSettingsKeyItem extends Item {
         PacketDistributor.sendToPlayer(viewer, new OpenRadarSettingsPayload(controller, settings));
     }
 
-    /** The radar set this key is currently handing out, or null when it is idle. */
     @Nullable
     public static BlockPos bindingSet(ItemStack stack) {
         CustomData data = stack.get(DataComponents.CUSTOM_DATA);
@@ -180,18 +172,25 @@ public class BombSettingsKeyItem extends Item {
         }
     }
 
-    /**
-     * Reached reflectively so the screen classes are never resolved on a dedicated
-     * server, matching how the mod already gates its other client-only entry points.
-     */
-    private static void openScreen(BlockPos pos, int storedDelay, int cassette) {
+    public void openBundleDial(Level level, BlockPos pos, HardpointBlockEntity hardpoint) {
+        if (level.isClientSide) {
+            ItemStack payload = hardpoint.payload();
+            int cassette = payload.getItem() instanceof DropBombItem ? DropBombItem.getCassette(payload) : 1;
+            openScreen(pos, hardpoint.releaseDelayTicks(), cassette, true);
+        } else {
+            level.playSound(null, pos, SoundEvents.ITEM_FRAME_ROTATE_ITEM, SoundSource.BLOCKS, 0.5f, 1.4f);
+        }
+    }
+
+    private static void openScreen(BlockPos pos, int storedDelay, int cassette, boolean allowAllAtOnce) {
         ReflectiveDispatcher.invoke(
                 "com.cbc_more_content.client.gui.BombSettingsClient",
                 "open",
-                new Class<?>[] {BlockPos.class, int.class, int.class},
+                new Class<?>[] {BlockPos.class, int.class, int.class, boolean.class},
                 pos,
                 storedDelay,
-                cassette);
+                cassette,
+                allowAllAtOnce);
     }
 
     private static void openSirenScreen(BlockPos pos) {

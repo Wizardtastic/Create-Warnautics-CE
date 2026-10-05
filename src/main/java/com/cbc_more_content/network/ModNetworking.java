@@ -3,6 +3,7 @@ package com.cbc_more_content.network;
 import com.cbc_more_content.block.Aim9BlockEntity;
 import com.cbc_more_content.block.C4BlockEntity;
 import com.cbc_more_content.block.DropBombBlock;
+import com.cbc_more_content.block.HardpointBlockEntity;
 import com.cbc_more_content.block.SirenBlockEntity;
 import com.cbc_more_content.command.WarnauticsCommands;
 import com.cbc_more_content.compat.RadarCompat;
@@ -27,7 +28,6 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public final class ModNetworking {
-    /** How far a player may be from the bomb they are configuring. */
     private static final double REACH_SQR = 8.0D * 8.0D;
 
     private ModNetworking() {}
@@ -100,11 +100,6 @@ public final class ModNetworking {
                 payload));
     }
 
-    /**
-     * The dial is a client screen, so everything it reports has to be re-checked here:
-     * the sender must be near a small rack bomb, and the tick value is normalized
-     * rather than trusted.
-     */
     private static void handleConfigureBomb(ConfigureBombPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)) {
@@ -112,20 +107,20 @@ public final class ModNetworking {
             }
             Level level = player.level();
             BlockPos pos = payload.pos();
-            if (!canAccess(player, pos)) {
+            if (!canAccess(player, pos) || !holdsSettingsKey(player)) {
                 return;
             }
-            if (!(level.getBlockState(pos).getBlock() instanceof DropBombBlock bomb) || !bomb.allowsCassette()) {
+            if (level.getBlockState(pos).getBlock() instanceof DropBombBlock bomb && bomb.allowsCassette()) {
+                DropBombBlock.applyReleaseDelay(level, pos, payload.delayTicks());
                 return;
             }
-            if (!holdsSettingsKey(player)) {
-                return;
+            if (level.getBlockEntity(pos) instanceof HardpointBlockEntity hardpoint) {
+                hardpoint.setReleaseDelayTicks(payload.delayTicks());
+                level.playSound(null, pos, SoundEvents.STONE_BUTTON_CLICK_ON, SoundSource.BLOCKS, 0.45f, 1.25f);
             }
-            DropBombBlock.applyReleaseDelay(level, pos, payload.delayTicks());
         });
     }
 
-    /** Same validation as the bomb dial: proximity, block identity and the key. */
     private static void handleConfigureC4(ConfigureC4Payload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)) {
@@ -140,13 +135,11 @@ public final class ModNetworking {
                 return;
             }
             if (!(level.getBlockEntity(pos) instanceof C4BlockEntity c4) || c4.isArmed()) {
-                // A live fuse is not adjustable — that is the whole point of the timer.
                 return;
             }
             c4.setFuseSeconds(payload.seconds());
             c4.setRemote(payload.remote());
             if (payload.arm()) {
-                // arm() plays the charge going live itself.
                 c4.arm();
             }
         });
@@ -162,10 +155,6 @@ public final class ModNetworking {
         });
     }
 
-    /**
-     * Setting a code on a charge being planted, or offering one against a live charge.
-     * The stored code never leaves the server, so this is the only place it is compared.
-     */
     private static void handleC4Code(C4CodePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)) {
@@ -208,7 +197,6 @@ public final class ModNetworking {
         });
     }
 
-    /** Which wire does what lives only here, so the cut is resolved server-side. */
     private static void handleWireCut(C4WirePayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player) || !(player.level() instanceof ServerLevel level)) {
@@ -226,8 +214,6 @@ public final class ModNetworking {
             if (result == C4BlockEntity.WireResult.NOTHING) {
                 return;
             }
-            // Swinging is replicated to every client, which is what drives the hinge on
-            // the cutters for onlookers as well as the player doing the cutting.
             player.swing(
                     player.getMainHandItem().getItem() instanceof WireCuttersItem
                             ? InteractionHand.MAIN_HAND
@@ -241,7 +227,6 @@ public final class ModNetworking {
         });
     }
 
-    /** The switchboard is opened by an operator who ran the command. */
     private static void handleOpenControlPanel(OpenControlPanelPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             ReflectiveDispatcher.invoke(
@@ -252,11 +237,6 @@ public final class ModNetworking {
         });
     }
 
-    /**
-     * A switch thrown on the panel. Re-checked against the same permission level the
-     * command needs: having a screen open is not authority, and nothing stops a client
-     * from sending this without ever having run the command.
-     */
     private static void handleControlPanel(ControlPanelPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)
@@ -274,7 +254,6 @@ public final class ModNetworking {
         });
     }
 
-    /** A post has started, or is still going; the client holds its voices open. */
     private static void handleSirenWail(SirenWailPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             ReflectiveDispatcher.invoke(
@@ -285,7 +264,6 @@ public final class ModNetworking {
         });
     }
 
-    /** Same validation as everything else the key opens: reach, block identity, key. */
     private static void handleSirenSettings(SirenSettingsPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player)) {
@@ -304,7 +282,6 @@ public final class ModNetworking {
         });
     }
 
-    /** Opens the intercept panel with the network's current settings. */
     private static void handleOpenRadarSettings(OpenRadarSettingsPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             ReflectiveDispatcher.invoke(
@@ -315,11 +292,6 @@ public final class ModNetworking {
         });
     }
 
-    /**
-     * Intercept conditions coming back from the panel. Re-checked here like everything
-     * else: the position has to be a Create Radar block the player is stood next to, not
-     * whatever a client cares to name.
-     */
     private static void handleRadarSettings(RadarSettingsPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             if (!(context.player() instanceof ServerPlayer player) || !(player.level() instanceof ServerLevel level)) {

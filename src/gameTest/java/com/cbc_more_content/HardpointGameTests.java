@@ -2,6 +2,7 @@ package com.cbc_more_content;
 
 import com.cbc_more_content.block.HardpointBlock;
 import com.cbc_more_content.block.HardpointBlockEntity;
+import com.cbc_more_content.item.DropBombItem;
 import com.cbc_more_content.item.HardpointItem;
 import com.cbc_more_content.munitions.Aim9Projectile;
 import com.cbc_more_content.munitions.CruiseMissileProjectile;
@@ -9,14 +10,21 @@ import com.cbc_more_content.munitions.DropBombProjectile;
 import com.cbc_more_content.registry.ModBlocks;
 import com.cbc_more_content.registry.ModEntityTypes;
 import com.cbc_more_content.registry.ModItems;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -76,6 +84,11 @@ public class HardpointGameTests {
     }
 
     private static BlockPos place(GameTestHelper helper, FakePlayer player) {
+        return place(helper, player, 180.0F);
+    }
+
+    private static BlockPos place(GameTestHelper helper, FakePlayer player, float lookYaw) {
+        player.setYRot(lookYaw);
         var level = helper.getLevel();
         BlockPos ceiling = helper.absolutePos(SUPPORT).above();
         level.setBlockAndUpdate(ceiling, Blocks.STONE.defaultBlockState());
@@ -85,6 +98,65 @@ public class HardpointGameTests {
         helper.assertTrue(
                 level.getBlockState(placed).is(ModBlocks.HARDPOINT.get()), "Placement lands in the clicked cell");
         return placed;
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_placement", timeoutTicks = 100)
+    public static void ceilingPlacementTakesThePlacersLookDirection(GameTestHelper helper) {
+        var level = helper.getLevel();
+        BlockPos ceiling = helper.absolutePos(SUPPORT).above();
+        level.setBlockAndUpdate(ceiling, Blocks.STONE.defaultBlockState());
+        var placer = player(helper, new ItemStack(ModItems.HARDPOINT.get()));
+        placer.setYRot(-90.0F); // looking east along the wing
+
+        InteractionResult result = placer.getMainHandItem().getItem().useOn(context(placer, ceiling, Direction.DOWN));
+        helper.assertTrue(result.consumesAction(), "The hardpoint must place against the ceiling");
+        BlockPos hung = ceiling.below();
+        var down = level.getBlockState(hung);
+        helper.assertTrue(down.is(ModBlocks.HARDPOINT.get()), "Placement lands in the clicked cell");
+        helper.assertTrue(
+                down.getValue(HardpointBlock.FACING) == Direction.DOWN, "Clicking the ceiling points the pylon down");
+        helper.assertTrue(
+                down.getValue(HardpointBlock.NOSE) == Direction.EAST,
+                "A wing pylon takes the placer's look direction for its rounds: " + down.getValue(HardpointBlock.NOSE));
+        level.removeBlock(hung, false);
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.HARDPOINT.get()));
+        placer.setYRot(0.0F); // looking south
+        result = placer.getMainHandItem().getItem().useOn(context(placer, ceiling, Direction.EAST));
+        helper.assertTrue(result.consumesAction(), "The hardpoint must place against the side face");
+        var wall = level.getBlockState(ceiling.relative(Direction.EAST));
+        helper.assertTrue(wall.is(ModBlocks.HARDPOINT.get()), "The wall placement lands beside the support");
+        helper.assertTrue(
+                wall.getValue(HardpointBlock.FACING) == Direction.EAST,
+                "A wall pylon points along the clicked face: " + wall.getValue(HardpointBlock.FACING));
+        helper.assertTrue(
+                wall.getValue(HardpointBlock.NOSE) == Direction.EAST,
+                "A wall pylon's rounds follow its own face: " + wall.getValue(HardpointBlock.NOSE));
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_placement", timeoutTicks = 100)
+    public static void wrenchSwingsAWingPylonsRoundsAroundItsAxis(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var wrencher = player(helper, new ItemStack(ModItems.HARDPOINT.get()));
+        BlockPos pylon = place(helper, wrencher);
+        Direction first = level.getBlockState(pylon).getValue(HardpointBlock.NOSE);
+        helper.assertTrue(first == Direction.NORTH, "The fixture starts facing north: " + first);
+        Direction swung = first;
+        for (int i = 0; i < 4; i++) {
+            var before = level.getBlockState(pylon);
+            ((HardpointBlock) before.getBlock()).onWrenched(before, context(wrencher, pylon, Direction.DOWN));
+            var after = level.getBlockState(pylon);
+            helper.assertTrue(
+                    after.getValue(HardpointBlock.FACING) == Direction.DOWN,
+                    "Swinging along its own axis must not tip the pylon off the wing");
+            swung = after.getValue(HardpointBlock.NOSE);
+            helper.assertTrue(
+                    swung != before.getValue(HardpointBlock.NOSE),
+                    "Each swing advances the rack: " + before.getValue(HardpointBlock.NOSE) + " -> " + swung);
+        }
+        helper.assertTrue(swung == first, "Four swings return the rack to where it started: " + swung);
+        helper.succeed();
     }
 
     private static BlockHitResult hit(BlockPos pos) {
@@ -223,6 +295,75 @@ public class HardpointGameTests {
         helper.succeed();
     }
 
+    /**
+     * The clamp model ships as client assets the game test server never loads, so this locks
+     * the contract by hand: every facing/nose combination must match exactly one blockstate
+     * variant (a miss renders the missing-model cube, a double match is nondeterministic),
+     * and each vertical variant must carry the same x/y turn the mounted rounds get — x:180
+     * for a ceiling flip, y following the nose, mirroring BlockModelRotation's rotateYXZ(-y,
+     * -x, 0) where y:90 turns north to east just like the payload's YP(-90).
+     */
+    @GameTest(template = "empty", batch = "hardpoint_placement", timeoutTicks = 100)
+    public static void hardpointBlockstateCoversEveryFacingAndNose(GameTestHelper helper) {
+        var stream =
+                HardpointGameTests.class.getResourceAsStream("/assets/cbc_more_content/blockstates/hardpoint.json");
+        helper.assertTrue(stream != null, "The hardpoint blockstate ships with the mod");
+        JsonObject variants;
+        try (stream) {
+            variants = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8))
+                    .getAsJsonObject()
+                    .getAsJsonObject("variants");
+        } catch (IOException e) {
+            throw new UncheckedIOException("The hardpoint blockstate must be readable", e);
+        }
+        helper.assertTrue(variants != null && !variants.isEmpty(), "The blockstate lists variants");
+        List<String> keys = new ArrayList<>(variants.keySet());
+        for (Direction facing : Direction.values()) {
+            for (Direction nose : List.of(Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST)) {
+                Map<String, String> state = Map.of("facing", facing.getName(), "nose", nose.getName());
+                List<String> hits =
+                        keys.stream().filter(key -> variantMatches(key, state)).toList();
+                helper.assertTrue(
+                        hits.size() == 1,
+                        "facing=" + facing + ",nose=" + nose + " must match exactly one variant, matched " + hits
+                                + " of " + keys);
+                JsonObject variant = variants.getAsJsonObject(hits.getFirst());
+                int wantX = facing == Direction.DOWN ? 180 : facing.getAxis() == Direction.Axis.Y ? 0 : 90;
+                int wantY = facing.getAxis() == Direction.Axis.Y
+                        ? switch (nose) {
+                            case EAST -> 90;
+                            case SOUTH -> 180;
+                            case WEST -> 270;
+                            default -> 0;
+                        }
+                        : switch (facing) {
+                            case EAST -> 90;
+                            case SOUTH -> 180;
+                            case WEST -> 270;
+                            default -> 0;
+                        };
+                int x = variant.has("x") ? variant.get("x").getAsInt() : 0;
+                int y = variant.has("y") ? variant.get("y").getAsInt() : 0;
+                helper.assertTrue(
+                        x == wantX && y == wantY,
+                        hits.getFirst() + " must turn x=" + wantX + ",y=" + wantY + " so the clamp follows the"
+                                + " rounds, found x=" + x + ",y=" + y);
+            }
+        }
+        helper.succeed();
+    }
+
+    /** Mirrors vanilla variant matching: every entry a key names must equal the state. */
+    private static boolean variantMatches(String key, Map<String, String> state) {
+        for (String entry : key.split(",")) {
+            String[] parts = entry.split("=", 2);
+            if (!state.containsKey(parts[0]) || !state.get(parts[0]).equals(parts[1])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @GameTest(template = "empty", batch = "hardpoint_placement", timeoutTicks = 100)
     public static void wrenchReachesEveryFacing(GameTestHelper helper) {
         var level = helper.getLevel();
@@ -248,10 +389,42 @@ public class HardpointGameTests {
         level.setBlockAndUpdate(pylon, level.getBlockState(pylon).setValue(HardpointBlock.FACING, Direction.DOWN));
         var hanging = level.getBlockState(pylon);
         ((HardpointBlock) hanging.getBlock()).onWrenched(hanging, context(wrencher, pylon, Direction.DOWN));
+        var turned = level.getBlockState(pylon);
         helper.assertTrue(
-                level.getBlockState(pylon).getValue(HardpointBlock.FACING) != Direction.DOWN,
+                turned.getValue(HardpointBlock.FACING) != Direction.DOWN
+                        || turned.getValue(HardpointBlock.NOSE) != hanging.getValue(HardpointBlock.NOSE),
                 "Wrenching the face the pylon already points along must still turn it");
         helper.succeed();
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_release", timeoutTicks = 200)
+    public static void roundsReleaseAlongTheDirectionThePylonWasPlaced(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var placer = player(helper, new ItemStack(ModItems.HARDPOINT.get()));
+        BlockPos pylon = place(helper, placer, -90.0F); // look east — the rounds must follow
+        helper.assertTrue(
+                level.getBlockState(pylon).getValue(HardpointBlock.NOSE) == Direction.EAST,
+                "The ceiling pylon keeps the placer's east look: "
+                        + level.getBlockState(pylon).getValue(HardpointBlock.NOSE));
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.AIM9.get()));
+        var mount = level.getBlockState(pylon)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(pylon));
+        helper.assertTrue(mount.consumesAction(), "The pylon takes an interceptor");
+
+        BlockPos wire = pylon.east();
+        level.setBlockAndUpdate(wire, Blocks.REDSTONE_BLOCK.defaultBlockState());
+        helper.runAfterDelay(3, () -> {
+            var rounds = level.getEntitiesOfClass(Aim9Projectile.class, new AABB(pylon).inflate(8));
+            helper.assertTrue(rounds.size() == 1, "The rising edge releases the interceptor");
+            var round = rounds.getFirst();
+            helper.assertTrue(
+                    round.getDeltaMovement().y < -0.05,
+                    "The interceptor cold-drops away from the pylon: " + round.getDeltaMovement());
+            assertRackForward(helper, round, "interceptor", Direction.EAST);
+            rounds.forEach(Entity::discard);
+            helper.succeed();
+        });
     }
 
     @GameTest(template = "empty", batch = "hardpoint_release", timeoutTicks = 200)
@@ -272,6 +445,7 @@ public class HardpointGameTests {
             helper.assertTrue(rounds.size() == 1, "The pulse releases the interceptor");
             helper.assertTrue(
                     rounds.getFirst().targetId() == null, "Without Create: Radars the relay hands over no contact");
+            assertRackForward(helper, rounds.getFirst(), "interceptor", Direction.NORTH);
             rounds.forEach(Entity::discard);
 
             level.removeBlock(wire, false);
@@ -287,6 +461,7 @@ public class HardpointGameTests {
                     helper.assertTrue(
                             cruises.getFirst().targetEntityId() == null,
                             "The cruise missile gets the interceptor's relay, not the old radar-network guidance");
+                    assertRackForward(helper, cruises.getFirst(), "cruise missile", Direction.NORTH);
                     cruises.forEach(Entity::discard);
                     helper.succeed();
                 });
@@ -295,7 +470,7 @@ public class HardpointGameTests {
     }
 
     @GameTest(template = "empty", batch = "hardpoint_release", timeoutTicks = 200)
-    public static void releasesFlyAlongTheMountNotStraightDown(GameTestHelper helper) {
+    public static void releasesDropStraightDownInsteadOfAlongTheMount(GameTestHelper helper) {
         var level = helper.getLevel();
         var placer = player(helper, new ItemStack(ModItems.HARDPOINT.get()));
         BlockPos pylon = place(helper, placer);
@@ -312,9 +487,9 @@ public class HardpointGameTests {
             helper.assertTrue(!bombs.isEmpty(), "The rising edge releases the bomb");
             Vec3 drop = bombs.getFirst().getDeltaMovement();
             helper.assertTrue(
-                    drop.z < -0.1,
-                    "A hanging pylon throws its bomb north along the flat rail, not straight down: " + drop);
-            helper.assertTrue(Math.abs(drop.x) < 1.0E-6, "The release may not drift sideways: " + drop);
+                    drop.y < -0.05, "A hanging pylon drops its bomb straight down instead of throwing it: " + drop);
+            helper.assertTrue(Math.abs(drop.x) < 1.0E-6, "The drop may not drift sideways: " + drop);
+            helper.assertTrue(Math.abs(drop.z) < 1.0E-6, "The drop may not sail along the mount: " + drop);
             bombs.forEach(Entity::discard);
 
             level.removeBlock(wire, false);
@@ -329,12 +504,103 @@ public class HardpointGameTests {
                     helper.assertTrue(rounds.size() == 1, "The next rising edge releases the interceptor");
                     Vec3 eject = rounds.getFirst().getDeltaMovement();
                     helper.assertTrue(
-                            eject.z < -0.3, "The interceptor leaves along its flat mount — north, not down: " + eject);
-                    helper.assertTrue(Math.abs(eject.x) < 1.0E-6, "The interceptor may not drift sideways: " + eject);
+                            eject.y < -0.5,
+                            "The interceptor drops away from its mount — down, not out along it: " + eject);
+                    helper.assertTrue(Math.abs(eject.x) < 1.0E-6, "The drop may not drift sideways: " + eject);
+                    helper.assertTrue(Math.abs(eject.z) < 1.0E-6, "The drop may not sail along the mount: " + eject);
+                    assertRackForward(helper, rounds.getFirst(), "interceptor", Direction.NORTH);
                     rounds.forEach(Entity::discard);
                     helper.succeed();
                 });
             });
+        });
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_release", timeoutTicks = 120)
+    public static void settingsKeyOpensBundleDialWithoutStrippingPayload(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var placer = player(helper, new ItemStack(ModItems.HARDPOINT.get()));
+        BlockPos pylon = place(helper, placer);
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, DropBombItem.withCassette(ModItems.SMALL_BOMB.get(), 4));
+        var mount = level.getBlockState(pylon)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(pylon));
+        helper.assertTrue(mount.consumesAction(), "The pylon takes a bomb bundle");
+        var fresh = (HardpointBlockEntity) level.getBlockEntity(pylon);
+        helper.assertTrue(fresh.releaseDelayTicks() == 0, "A fresh pylon is set to drop its whole bundle at once");
+
+        var keyHolder = playerAt(helper, pylon, new ItemStack(ModItems.SETTINGS_KEY.get()));
+        var dial = level.getBlockState(pylon)
+                .useItemOn(keyHolder.getMainHandItem(), level, keyHolder, InteractionHand.MAIN_HAND, hit(pylon));
+        helper.assertTrue(dial.consumesAction(), "The settings key must open the bundle dial");
+        var loaded = (HardpointBlockEntity) level.getBlockEntity(pylon);
+        helper.assertTrue(loaded.hasPayload(), "Opening the dial must not strip the payload");
+        helper.assertTrue(
+                DropBombItem.getCassette(loaded.payload()) == 4,
+                "The mounted bundle is still whole, found cassette=" + DropBombItem.getCassette(loaded.payload()));
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_release", timeoutTicks = 120)
+    public static void bundleDropsAllAtOnceOnOneSignal(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var placer = player(helper, new ItemStack(ModItems.HARDPOINT.get()));
+        BlockPos pylon = place(helper, placer);
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, DropBombItem.withCassette(ModItems.SMALL_BOMB.get(), 4));
+        var mount = level.getBlockState(pylon)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(pylon));
+        helper.assertTrue(mount.consumesAction(), "The pylon takes a bomb bundle");
+
+        BlockPos wire = pylon.east();
+        level.setBlockAndUpdate(wire, Blocks.REDSTONE_BLOCK.defaultBlockState());
+        helper.runAfterDelay(3, () -> {
+            var be = (HardpointBlockEntity) level.getBlockEntity(pylon);
+            var bombs = level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8));
+            int dropped = bombs.size();
+            bombs.forEach(Entity::discard);
+            helper.assertFalse(be.hasPayload(), "One signal empties the pylon in all-at-once mode");
+            helper.assertFalse(be.isReleasing(), "An all-at-once release leaves no sequence running");
+            helper.assertTrue(dropped == 4, "Every bomb of the bundle drops together, saw " + dropped);
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_release", timeoutTicks = 200)
+    public static void staggeredBundleDripsOneBombPerInterval(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var placer = player(helper, new ItemStack(ModItems.HARDPOINT.get()));
+        BlockPos pylon = place(helper, placer);
+
+        var be = (HardpointBlockEntity) level.getBlockEntity(pylon);
+        be.setReleaseDelayTicks(10);
+        helper.assertTrue(be.releaseDelayTicks() == 10, "The pylon stores the dial's interval");
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, DropBombItem.withCassette(ModItems.SMALL_BOMB.get(), 4));
+        var mount = level.getBlockState(pylon)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(pylon));
+        helper.assertTrue(mount.consumesAction(), "The pylon takes a bomb bundle");
+
+        BlockPos wire = pylon.east();
+        level.setBlockAndUpdate(wire, Blocks.REDSTONE_BLOCK.defaultBlockState());
+        helper.runAfterDelay(3, () -> {
+            var current = (HardpointBlockEntity) level.getBlockEntity(pylon);
+            helper.assertTrue(current.isReleasing(), "A staggered release keeps running between bombs");
+            helper.assertTrue(
+                    current.hasPayload() && DropBombItem.getCassette(current.payload()) == 3,
+                    "Only the first bomb leaves on the signal, cassette left="
+                            + (current.hasPayload() ? DropBombItem.getCassette(current.payload()) : 0));
+            var bombs = level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8));
+            helper.assertTrue(bombs.size() == 1, "Exactly one bomb in the air so far, saw " + bombs.size());
+            bombs.forEach(Entity::discard);
+        });
+        helper.runAfterDelay(40, () -> {
+            var current = (HardpointBlockEntity) level.getBlockEntity(pylon);
+            helper.assertFalse(current.hasPayload(), "The interval runs the whole bundle out");
+            helper.assertFalse(current.isReleasing(), "The sequence ends with the bundle");
+            level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(96))
+                    .forEach(Entity::discard);
+            helper.succeed();
         });
     }
 
@@ -390,18 +656,20 @@ public class HardpointGameTests {
         helper.succeed();
     }
 
-    @GameTest(template = "empty", batch = "hardpoint_sable", timeoutTicks = 120)
+    @GameTest(template = "empty", batch = "hardpoint_sable", timeoutTicks = 240)
     public static void payloadSurvivesReleaseFromPhysicsBodyAttachedToABlock(GameTestHelper helper) {
         var level = helper.getLevel();
         List<ItemStack> payloads = List.of(
                 new ItemStack(ModItems.SMALL_BOMB.get()),
                 new ItemStack(ModItems.AIM9.get()),
                 new ItemStack(ModItems.CRUISE_MISSILE.get()));
-        var fixture = TicketType.create("hardpoint_body_fixture", Long::compareTo, 100);
+        var fixture = TicketType.create("hardpoint_body_fixture", Long::compareTo, 300);
         var ships = new ArrayList<ServerSubLevel>();
         var pylons = new ArrayList<BlockPos>();
+        var origins = new ArrayList<BlockPos>();
         for (int i = 0; i < payloads.size(); i++) {
             BlockPos at = helper.absolutePos(new BlockPos(30 + i * 16, 70, 40));
+            origins.add(at);
             level.getChunkSource().addRegionTicket(fixture, new ChunkPos(at), 3, at.asLong());
             level.setBlock(at.west(), Blocks.STONE.defaultBlockState(), FLAGS);
             level.setBlock(
@@ -427,86 +695,208 @@ public class HardpointGameTests {
             ships.add(ship);
             pylons.add(local);
         }
-        helper.runAfterDelay(4, () -> {
+        for (BlockPos origin : origins) {
+            level.getChunkAt(origin);
+        }
+        var expected = new ArrayList<Vec3>();
+        for (BlockPos origin : origins) {
+            expected.add(origin.getCenter());
+        }
+        Runnable arm = () -> {
             for (BlockPos pylon : pylons) {
                 level.setBlockAndUpdate(pylon.above(), Blocks.REDSTONE_BLOCK.defaultBlockState());
             }
-        });
-        var expected = new ArrayList<Vec3>();
-        for (int i = 0; i < payloads.size(); i++) {
-            expected.add(helper.absolutePos(new BlockPos(30 + i * 16, 70, 40))
-                    .getCenter()
-                    .add(1, 0, 0));
-        }
-        var firstSeen = new ArrayList<Entity>();
-        var firstPos = new ArrayList<Vec3>();
-        var firstVel = new ArrayList<Vec3>();
-        for (int i = 0; i < payloads.size(); i++) {
-            firstSeen.add(null);
-            firstPos.add(Vec3.ZERO);
-            firstVel.add(Vec3.ZERO);
-        }
-        for (int tick = 5; tick <= 15; tick++) {
-            helper.runAfterDelay(tick, () -> {
+            var sightPos = new ArrayList<Vec3>();
+            var sightVel = new ArrayList<Vec3>();
+            for (int i = 0; i < payloads.size(); i++) {
+                sightPos.add(null);
+                sightVel.add(null);
+            }
+            var types = new ArrayList<Class<? extends Entity>>();
+            for (ItemStack payload : payloads) {
+                types.add(roundType(payload));
+            }
+            pollFirstSight(helper, level, expected, types, sightPos, sightVel, 1, () -> {
+                var problems = new ArrayList<String>();
+                var trail = new ArrayList<String>();
                 for (int i = 0; i < pylons.size(); i++) {
-                    if (firstSeen.get(i) != null) {
+                    var state = level.getBlockState(pylons.get(i));
+                    if (!(level.getBlockEntity(pylons.get(i)) instanceof HardpointBlockEntity pylon)) {
+                        problems.add("body " + i + " pylon block entity is gone; state=" + state + " shipRemoved="
+                                + ships.get(i).isRemoved());
+                    } else if (pylon.hasPayload()) {
+                        problems.add("body " + i + " payload not consumed");
+                    }
+                    Vec3 column = expected.get(i);
+                    Vec3 at = sightPos.get(i);
+                    Vec3 vel = sightVel.get(i);
+                    String label = "body " + i + " state=" + state + " shipRemoved="
+                            + ships.get(i).isRemoved();
+                    if (at == null) {
+                        problems.add(label + " round never released; remaining=" + roundCensus(level));
+                        trail.add(label + " released=false");
                         continue;
                     }
-                    Entity round = findRound(level, expected.get(i), roundType(payloads.get(i)));
-                    if (round != null) {
-                        firstSeen.set(i, round);
-                        firstPos.set(i, round.position());
-                        firstVel.set(i, round.getDeltaMovement());
+                    trail.add(label + " drop=" + at + " " + vel);
+                    double dxz = Math.max(Math.abs(at.x - column.x), Math.abs(at.z - column.z));
+                    if (dxz > 2.5) {
+                        problems.add("body " + i + " round dropped outside its pylon column -> " + at + " vel=" + vel);
+                    }
+                    if (at.y > column.y + 0.5) {
+                        problems.add("body " + i + " round must spawn below its pylon, not above it, pos=" + at);
+                    }
+                    if (vel.y >= -0.05) {
+                        problems.add("body " + i + " round must fall away from its pylon at release, vel=" + vel);
+                    }
+                    if (Math.abs(vel.x) > 0.01 || Math.abs(vel.z) > 0.01) {
+                        problems.add("body " + i + " round must not be thrusting sideways at release, vel=" + vel);
+                    }
+                    boolean missile = roundType(payloads.get(i)) != DropBombProjectile.class;
+                    Entity round = findInBox(
+                            level, missile ? flightLane(column) : dropColumn(column), roundType(payloads.get(i)));
+                    if (round == null) {
+                        problems.add(label + " round lost after release; remaining=" + roundCensus(level));
+                        continue;
+                    }
+                    Vec3 now = round.getDeltaMovement();
+                    if (missile) {
+                        boolean powered = round instanceof Aim9Projectile aim9
+                                ? aim9.isPowered()
+                                : round instanceof CruiseMissileProjectile cruise && cruise.isPowered();
+                        if (!powered) {
+                            problems.add("body " + i + " motor must light half a second after the drop, vel=" + now);
+                        }
+                        Vec3 forward = state.is(ModBlocks.HARDPOINT.get())
+                                ? Vec3.atLowerCornerOf(
+                                        HardpointBlock.releaseNose(state).getNormal())
+                                : new Vec3(1.0D, 0.0D, 0.0D);
+                        if (now.dot(forward) <= 0.1) {
+                            problems.add("body " + i + " must fly forward along its firing facing, vel=" + now
+                                    + " forward=" + forward);
+                        }
+                        double yawWant = Math.toDegrees(Math.atan2(forward.z, forward.x)) - 90.0;
+                        double pitchWant = -Math.toDegrees(Math.asin(Math.max(-1.0D, Math.min(1.0D, forward.y))));
+                        double yawDelta = Math.abs(round.getYRot() - yawWant);
+                        if (yawDelta > 180.0) {
+                            yawDelta = 360.0 - yawDelta;
+                        }
+                        double pitchDelta = Math.abs(round.getXRot() - pitchWant);
+                        if (yawDelta > 10.0 || pitchDelta > 10.0) {
+                            problems.add("body " + i
+                                    + " must keep the facing it fired with: yaw=" + round.getYRot()
+                                    + " pitch=" + round.getXRot() + " expected yaw=" + yawWant + " pitch="
+                                    + pitchWant);
+                        }
+                    } else if (now.y >= -0.05) {
+                        problems.add("body " + i + " bomb must still be falling, vel=" + now);
                     }
                 }
+                String remaining = roundCensus(level);
+                for (int i = 0; i < payloads.size(); i++) {
+                    level.getEntitiesOfClass(roundType(payloads.get(i)), flightLane(expected.get(i)), Entity::isAlive)
+                            .forEach(Entity::discard);
+                    BlockPos local = pylons.get(i);
+                    for (BlockPos cell : List.of(local.west(), local, local.above())) {
+                        level.removeBlock(cell, false);
+                    }
+                }
+                helper.assertTrue(
+                        problems.isEmpty(),
+                        String.join(" | ", problems)
+                                + " || "
+                                + String.join(" || ", trail)
+                                + " || remaining="
+                                + remaining);
+                helper.succeed();
             });
+        };
+        pollUntilTicking(helper, level, origins, 1, arm, 3);
+    }
+
+    private static void assertRackForward(GameTestHelper helper, Entity round, String what, Direction nose) {
+        helper.assertTrue(
+                Math.abs(round.getXRot()) < 10.0F,
+                "The " + what + " must hang nose-level through the drop, not nose-down: pitch=" + round.getXRot());
+        double yawWant = Math.toDegrees(Math.atan2(nose.getStepZ(), nose.getStepX())) - 90.0;
+        double yawDelta = Math.abs(round.getYRot() - yawWant);
+        if (yawDelta > 180.0) {
+            yawDelta = 360.0 - yawDelta;
         }
-        helper.runAfterDelay(16, () -> {
-            var problems = new ArrayList<String>();
-            var seen = new ArrayList<Entity>();
-            for (int i = 0; i < pylons.size(); i++) {
-                if (((HardpointBlockEntity) level.getBlockEntity(pylons.get(i))).hasPayload()) {
-                    problems.add("body " + i + " payload not consumed");
-                }
-                if (firstSeen.get(i) == null) {
-                    Entity late = findRound(level, expected.get(i), roundType(payloads.get(i)));
-                    if (late != null) {
-                        firstSeen.set(i, late);
-                        firstPos.set(i, late.position());
-                        firstVel.set(i, late.getDeltaMovement());
-                    }
-                }
-                Entity round = firstSeen.get(i);
-                if (round == null) {
-                    problems.add("body " + i + " round missing/explosive; alive=" + roundCensus(level));
-                    continue;
-                }
-                seen.add(round);
-                Vec3 at = firstPos.get(i);
-                Vec3 vel = firstVel.get(i);
-                double dxz = Math.max(Math.abs(at.x - expected.get(i).x), Math.abs(at.z - expected.get(i).z));
-                double dy = Math.abs(at.y - expected.get(i).y);
-                if (dxz > 8.0 || dy > 6.0) {
-                    problems.add("body " + i + " round drifted from " + expected.get(i) + " to " + at + " vel=" + vel);
-                }
-                if (vel.x <= 0.0) {
-                    problems.add("body " + i + " must fly east away from its pylon, vel=" + vel);
-                }
+        helper.assertTrue(
+                yawDelta < 10.0,
+                "A ceiling pylon points its " + what + " along " + nose + ", not down: yaw=" + round.getYRot()
+                        + " expected " + yawWant);
+    }
+
+    private static AABB dropColumn(Vec3 column) {
+        return new AABB(column.x - 4, column.y - 80, column.z - 4, column.x + 4, column.y + 1, column.z + 4);
+    }
+
+    private static AABB flightLane(Vec3 column) {
+        return new AABB(column.x - 4, column.y - 80, column.z - 8, column.x + 80, column.y + 1, column.z + 8);
+    }
+
+    private static Entity findInBox(ServerLevel level, AABB box, Class<? extends Entity> type) {
+        return level.getEntitiesOfClass(Entity.class, box, type::isInstance).stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static void pollFirstSight(
+            GameTestHelper helper,
+            ServerLevel level,
+            List<Vec3> expected,
+            List<Class<? extends Entity>> types,
+            List<Vec3> sightPos,
+            List<Vec3> sightVel,
+            int tick,
+            Runnable finish) {
+        for (int i = 0; i < types.size(); i++) {
+            if (sightPos.get(i) != null) {
+                continue;
             }
-            seen.forEach(Entity::discard);
-            for (int i = 0; i < payloads.size(); i++) {
-                level.getEntitiesOfClass(
-                                roundType(payloads.get(i)),
-                                new AABB(expected.get(i), expected.get(i)).inflate(9),
-                                Entity::isAlive)
-                        .forEach(Entity::discard);
-                BlockPos local = pylons.get(i);
-                for (BlockPos cell : List.of(local.west(), local, local.above())) {
-                    level.removeBlock(cell, false);
-                }
+            Entity round = findInBox(level, dropColumn(expected.get(i)), types.get(i));
+            if (round != null) {
+                sightPos.set(i, round.position());
+                sightVel.set(i, round.getDeltaMovement());
             }
-            helper.assertTrue(problems.isEmpty(), String.join(" | ", problems));
-            helper.succeed();
+        }
+        boolean allSeen = true;
+        for (Vec3 seen : sightPos) {
+            if (seen == null) {
+                allSeen = false;
+                break;
+            }
+        }
+        if (allSeen || tick >= 34) {
+            helper.runAfterDelay(allSeen ? 14 : 6, finish);
+            return;
+        }
+        helper.runAfterDelay(1, new Runnable() {
+            @Override
+            public void run() {
+                pollFirstSight(helper, level, expected, types, sightPos, sightVel, tick + 1, finish);
+            }
+        });
+    }
+
+    private static void pollUntilTicking(
+            GameTestHelper helper,
+            ServerLevel level,
+            List<BlockPos> origins,
+            int attempt,
+            Runnable onReady,
+            int delay) {
+        helper.runAfterDelay(delay, new Runnable() {
+            @Override
+            public void run() {
+                if (origins.stream().allMatch(level::isPositionEntityTicking)) {
+                    onReady.run();
+                    return;
+                }
+                helper.assertTrue(attempt <= 100, "Fixture chunks never became entity-ticking, origins=" + origins);
+                pollUntilTicking(helper, level, origins, attempt + 1, onReady, 1);
+            }
         });
     }
 
@@ -527,14 +917,6 @@ public class HardpointGameTests {
             return DropBombProjectile.class;
         }
         return payload.is(ModItems.AIM9.get()) ? Aim9Projectile.class : CruiseMissileProjectile.class;
-    }
-
-    private static Entity findRound(ServerLevel level, Vec3 world, Class<? extends Entity> type) {
-        for (Entity entity :
-                level.getEntitiesOfClass(Entity.class, new AABB(world, world).inflate(8), type::isInstance)) {
-            return entity;
-        }
-        return null;
     }
 
     private static void advance(Entity entity) {

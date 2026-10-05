@@ -55,6 +55,9 @@ public class CruiseMissileProjectile extends Entity {
     public static final int EJECT_TICKS = 14;
     public static final double EJECT_SPEED = 0.62D;
     private static final double EJECT_GRAVITY = 0.03D;
+    private static final int DROP_TICKS = 10;
+
+    private static final double DROP_SPEED = 0.6D;
 
     private static final double TURN_RATE = 0.11D;
     private static final double LOOKAHEAD = 36.0D;
@@ -71,6 +74,8 @@ public class CruiseMissileProjectile extends Entity {
 
     private int fuel = FUEL_TICKS;
     private double fuelFraction;
+    private boolean dropped;
+
     private int poweredTicks;
     private MissileFlightProfile flightProfile = MissileFlightProfile.DIRECT;
     private boolean detonated;
@@ -174,6 +179,19 @@ public class CruiseMissileProjectile extends Entity {
         this.entityData.set(POWERED, false);
         this.setDeltaMovement(heading.normalize().scale(EJECT_SPEED).add(carrierVelocity));
         this.faceMotion(heading);
+        this.yRotO = this.getYRot();
+        this.xRotO = this.getXRot();
+    }
+
+    public void drop(Vec3 forward, Vec3 carrierVelocity) {
+        this.carrierVelocity = carrierVelocity;
+        this.dropped = true;
+        this.ejecting = DROP_TICKS;
+        this.entityData.set(EJECTING, true);
+        this.entityData.set(POWERED, false);
+        this.setDeltaMovement(carrierVelocity.add(0.0D, -DROP_SPEED, 0.0D));
+        Vec3 nose = forward.lengthSqr() < 1.0E-6D ? new Vec3(1.0D, 0.0D, 0.0D) : forward.normalize();
+        this.faceMotion(nose);
         this.yRotO = this.getYRot();
         this.xRotO = this.getXRot();
     }
@@ -292,7 +310,9 @@ public class CruiseMissileProjectile extends Entity {
         Vec3 motion = this.getDeltaMovement().subtract(0.0D, EJECT_GRAVITY, 0.0D);
         this.setDeltaMovement(motion);
         this.setPos(this.position().add(motion));
-        this.faceMotion(motion);
+        if (!this.dropped) {
+            this.faceMotion(motion);
+        }
 
         if (this.ejecting > 0) {
             return;
@@ -300,8 +320,14 @@ public class CruiseMissileProjectile extends Entity {
 
         this.entityData.set(EJECTING, false);
         this.entityData.set(POWERED, true);
-        Vec3 relative = motion.subtract(this.carrierVelocity);
-        Vec3 heading = relative.lengthSqr() < 1.0E-4D ? new Vec3(0.0D, 1.0D, 0.0D) : relative.normalize();
+        Vec3 heading;
+        if (this.dropped) {
+            heading = Vec3.directionFromRotation(this.getXRot(), this.getYRot());
+            this.carrierVelocity = Vec3.ZERO;
+        } else {
+            Vec3 relative = motion.subtract(this.carrierVelocity);
+            heading = relative.lengthSqr() < 1.0E-4D ? new Vec3(0.0D, 1.0D, 0.0D) : relative.normalize();
+        }
         this.setDeltaMovement(heading.scale(CRUISE_SPEED).add(this.carrierVelocity));
         this.level()
                 .playSound(
@@ -606,7 +632,6 @@ public class CruiseMissileProjectile extends Entity {
         }
     }
 
-    /** The same warhead is used when the placed airframe is destroyed by an explosion. */
     public static void detonateWarhead(ServerLevel level, @Nullable Entity source, Vec3 at) {
         BombExplosionHandler.detonate(
                 level,
@@ -651,8 +676,6 @@ public class CruiseMissileProjectile extends Entity {
 
     @Override
     public boolean shouldRenderAtSqrDistance(double distanceSqr) {
-        // Server tracking reaches 32 chunks. Vanilla's size-based renderer cutoff was
-        // much shorter, making the airframe disappear while its chunks were still in view.
         return distanceSqr < 512.0D * 512.0D;
     }
 
@@ -677,6 +700,7 @@ public class CruiseMissileProjectile extends Entity {
         this.waterEntered = tag.getBoolean("WaterEntered");
         this.ejecting = Math.clamp(tag.getInt("Ejecting"), 0, EJECT_TICKS);
         this.entityData.set(EJECTING, this.ejecting > 0);
+        this.dropped = tag.getBoolean("Dropped");
         this.carrierVelocity =
                 new Vec3(tag.getDouble("CarrierX"), tag.getDouble("CarrierY"), tag.getDouble("CarrierZ"));
         this.blastDrift =
@@ -698,6 +722,7 @@ public class CruiseMissileProjectile extends Entity {
         tag.putBoolean("Powered", this.isPowered());
         tag.putBoolean("WaterEntered", this.waterEntered);
         tag.putInt("Ejecting", this.ejecting);
+        tag.putBoolean("Dropped", this.dropped);
         tag.putDouble("CarrierX", this.carrierVelocity.x);
         tag.putDouble("CarrierY", this.carrierVelocity.y);
         tag.putDouble("CarrierZ", this.carrierVelocity.z);

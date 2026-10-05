@@ -14,20 +14,10 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-/**
- * Release-interval dial for a placed bomb, opened by the settings key.
- * <p>
- * Follows the interaction language Simulated uses for its instrument screens — a
- * recessed well with a physical control you grab and turn, detent clicks fed back
- * through {@code LEVER_CLICK} at a rising pitch, a value that eases toward its target
- * instead of snapping, and settings committed once on close — but drawn from this
- * mod's own atlas and palette.
- */
 @OnlyIn(Dist.CLIENT)
 public class BombSettingsScreen extends Screen {
     private static final int PANEL_W = 176;
     private static final int PANEL_H = 95;
-    /** Total sweep of the dial, centred on 12 o'clock. */
     private static final float ARC_DEGREES = 240.0f;
 
     private static final int DIAL_MARKERS = 11;
@@ -37,11 +27,11 @@ public class BombSettingsScreen extends Screen {
 
     private final BlockPos pos;
     private final int cassette;
+    private final boolean allowAllAtOnce;
 
     private int delayTicks;
     private boolean dragging;
     private int ticksOpen;
-    /** Eased pointer angle, so the dial swings to a new detent rather than jumping. */
     private float previousVisualAngle;
 
     private float visualAngle;
@@ -50,10 +40,12 @@ public class BombSettingsScreen extends Screen {
     private int guiLeft;
     private int guiTop;
 
-    public BombSettingsScreen(BlockPos pos, int storedDelay, int cassette) {
+    public BombSettingsScreen(BlockPos pos, int storedDelay, int cassette, boolean allowAllAtOnce) {
         super(Component.translatable("gui.cbc_more_content.bomb_settings.title"));
         this.pos = pos;
-        this.delayTicks = DropBombBlock.releaseDelayTicks(storedDelay);
+        this.allowAllAtOnce = allowAllAtOnce;
+        this.delayTicks =
+                allowAllAtOnce ? normalizeBundleDelay(storedDelay) : DropBombBlock.releaseDelayTicks(storedDelay);
         this.cassette = cassette;
         this.targetAngle = angleOf(this.delayTicks);
         this.visualAngle = this.targetAngle;
@@ -70,12 +62,21 @@ public class BombSettingsScreen extends Screen {
         return -ARC_DEGREES * 0.5f + ARC_DEGREES * Mth.clamp(progress, 0.0f, 1.0f);
     }
 
-    private static float progressOf(int ticks) {
-        return (DropBombBlock.normalizeReleaseDelayTicks(ticks) - DropBombBlock.MIN_RELEASE_DELAY_TICKS)
-                / (float) (DropBombBlock.MAX_RELEASE_DELAY_TICKS - DropBombBlock.MIN_RELEASE_DELAY_TICKS);
+    private int minDelayTicks() {
+        return this.allowAllAtOnce ? 0 : DropBombBlock.MIN_RELEASE_DELAY_TICKS;
     }
 
-    private static float angleOf(int ticks) {
+    private static int normalizeBundleDelay(int ticks) {
+        return ticks < DropBombBlock.MIN_RELEASE_DELAY_TICKS ? 0 : DropBombBlock.normalizeReleaseDelayTicks(ticks);
+    }
+
+    private float progressOf(int ticks) {
+        int min = this.minDelayTicks();
+        int value = ticks > 0 ? DropBombBlock.normalizeReleaseDelayTicks(ticks) : 0;
+        return (value - min) / (float) (DropBombBlock.MAX_RELEASE_DELAY_TICKS - min);
+    }
+
+    private float angleOf(int ticks) {
         return angleAtProgress(progressOf(ticks));
     }
 
@@ -83,7 +84,6 @@ public class BombSettingsScreen extends Screen {
     public void tick() {
         this.ticksOpen++;
         this.previousVisualAngle = this.visualAngle;
-        // Exponential chase, the same feel Catnip's LerpedFloat gives Simulated's dials.
         this.visualAngle += (this.targetAngle - this.visualAngle) * 0.32f;
         if (Math.abs(this.targetAngle - this.visualAngle) < 0.05f) {
             this.visualAngle = this.targetAngle;
@@ -117,8 +117,6 @@ public class BombSettingsScreen extends Screen {
             double rad = Math.toRadians(angleAtProgress(i / (float) (DIAL_MARKERS - 1)));
             WarnauticsGuiTextures sprite =
                     i == selectedMarker ? WarnauticsGuiTextures.DETENT_LIT : WarnauticsGuiTextures.DETENT;
-            // Centred on the sprite's own size rather than a hardcoded half-width, so the
-            // dots stay on the ring whatever dimensions the authored atlas gives them.
             int x = this.guiLeft + KNOB_CX + (int) Math.round(Math.sin(rad) * DETENT_RADIUS) - sprite.width / 2;
             int y = this.guiTop + KNOB_CY - (int) Math.round(Math.cos(rad) * DETENT_RADIUS) - sprite.height / 2;
             sprite.render(graphics, x, y);
@@ -146,12 +144,24 @@ public class BombSettingsScreen extends Screen {
         int ticks = this.delayTicks;
         int x = this.guiLeft + 130;
         int y = this.guiTop + 30;
-
         graphics.drawCenteredString(
                 this.font, Component.translatable("gui.cbc_more_content.bomb_settings.interval"), x, y, 0x9AA08C);
-        graphics.drawCenteredString(this.font, Component.literal(ticks + "t"), x, y + 14, 0xFFB036);
-        graphics.drawCenteredString(
-                this.font, Component.literal(String.format(Locale.ROOT, "%.1f s", ticks / 20.0D)), x, y + 24, 0xE8E2CF);
+        if (ticks <= 0) {
+            graphics.drawCenteredString(
+                    this.font,
+                    Component.translatable("gui.cbc_more_content.bomb_settings.all_at_once"),
+                    x,
+                    y + 14,
+                    0xFFB036);
+        } else {
+            graphics.drawCenteredString(this.font, Component.literal(ticks + "t"), x, y + 14, 0xFFB036);
+            graphics.drawCenteredString(
+                    this.font,
+                    Component.literal(String.format(Locale.ROOT, "%.1f s", ticks / 20.0D)),
+                    x,
+                    y + 24,
+                    0xE8E2CF);
+        }
 
         if (this.cassette > 1) {
             graphics.drawCenteredString(
@@ -206,7 +216,6 @@ public class BombSettingsScreen extends Screen {
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
-    /** Maps the cursor's bearing onto 0.1-second steps across the full dial. */
     private void turnTo(double mouseX, double mouseY) {
         double dx = mouseX - (this.guiLeft + KNOB_CX);
         double dy = mouseY - (this.guiTop + KNOB_CY);
@@ -216,19 +225,31 @@ public class BombSettingsScreen extends Screen {
         float angle = (float) Math.toDegrees(Math.atan2(dx, -dy));
         angle = Mth.clamp(angle, -ARC_DEGREES * 0.5f, ARC_DEGREES * 0.5f);
         float progress = (angle + ARC_DEGREES * 0.5f) / ARC_DEGREES;
-        int ticks = Math.round(
-                Mth.lerp(progress, DropBombBlock.MIN_RELEASE_DELAY_TICKS, DropBombBlock.MAX_RELEASE_DELAY_TICKS));
+        int ticks = Math.round(Mth.lerp(progress, this.minDelayTicks(), DropBombBlock.MAX_RELEASE_DELAY_TICKS));
         this.setDelayTicks(ticks);
     }
 
     private void setDelayTicks(int ticks) {
-        int clamped = DropBombBlock.normalizeReleaseDelayTicks(ticks);
+        int clamped = snapDelayTicks(ticks);
         if (clamped == this.delayTicks) {
             return;
         }
         this.delayTicks = clamped;
         this.targetAngle = angleOf(clamped);
         this.playClick(0.6f + progressOf(clamped) * 0.7f);
+    }
+
+    private int snapDelayTicks(int ticks) {
+        if (!this.allowAllAtOnce) {
+            return DropBombBlock.normalizeReleaseDelayTicks(ticks);
+        }
+        if (ticks <= 0) {
+            return 0;
+        }
+        if (ticks < DropBombBlock.MIN_RELEASE_DELAY_TICKS) {
+            return ticks > this.delayTicks ? DropBombBlock.MIN_RELEASE_DELAY_TICKS : 0;
+        }
+        return DropBombBlock.normalizeReleaseDelayTicks(ticks);
     }
 
     private void playClick(float pitch) {

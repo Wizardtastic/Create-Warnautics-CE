@@ -10,7 +10,7 @@ import net.neoforged.api.distmarker.OnlyIn;
 public final class BombSettingsClient {
     private BombSettingsClient() {}
 
-    public static void open(BlockPos pos, int storedDelay, int cassette) {
-        Minecraft.getInstance().setScreen(new BombSettingsScreen(pos, storedDelay, cassette));
+    public static void open(BlockPos pos, int storedDelay, int cassette, boolean allowAllAtOnce) {
+        Minecraft.getInstance().setScreen(new BombSettingsScreen(pos, storedDelay, cassette, allowAllAtOnce));
     }
 }

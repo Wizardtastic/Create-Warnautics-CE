@@ -16,8 +16,13 @@ import net.minecraft.world.level.block.state.BlockState;
 
 public class HardpointBlockEntity extends BlockEntity {
     private static final String PAYLOAD_KEY = "Payload";
+    private static final String RELEASE_DELAY_KEY = "ReleaseDelay";
 
     private ItemStack payload = ItemStack.EMPTY;
+
+    private int releaseDelayTicks;
+
+    private boolean releasing;
 
     @Nullable
     private BlockPos radarLink;
@@ -53,6 +58,31 @@ public class HardpointBlockEntity extends BlockEntity {
         this.sync();
     }
 
+    public int releaseDelayTicks() {
+        return this.releaseDelayTicks;
+    }
+
+    public void setReleaseDelayTicks(int ticks) {
+        int normalized = normalizeReleaseDelayTicks(ticks);
+        if (normalized == this.releaseDelayTicks) {
+            return;
+        }
+        this.releaseDelayTicks = normalized;
+        this.sync();
+    }
+
+    private static int normalizeReleaseDelayTicks(int ticks) {
+        return ticks < DropBombBlock.MIN_RELEASE_DELAY_TICKS ? 0 : DropBombBlock.normalizeReleaseDelayTicks(ticks);
+    }
+
+    public boolean isReleasing() {
+        return this.releasing;
+    }
+
+    public void setReleasing(boolean releasing) {
+        this.releasing = releasing;
+    }
+
     @Nullable
     public BlockPos radarLink() {
         return this.radarLink;
@@ -82,6 +112,9 @@ public class HardpointBlockEntity extends BlockEntity {
             tag.putInt("RadarY", this.radarLink.getY());
             tag.putInt("RadarZ", this.radarLink.getZ());
         }
+        if (this.releaseDelayTicks > 0) {
+            tag.putInt(RELEASE_DELAY_KEY, this.releaseDelayTicks);
+        }
     }
 
     @Override
@@ -93,6 +126,8 @@ public class HardpointBlockEntity extends BlockEntity {
         this.radarLink = tag.contains("RadarX")
                 ? new BlockPos(tag.getInt("RadarX"), tag.getInt("RadarY"), tag.getInt("RadarZ"))
                 : null;
+        this.releaseDelayTicks =
+                tag.contains(RELEASE_DELAY_KEY) ? normalizeReleaseDelayTicks(tag.getInt(RELEASE_DELAY_KEY)) : 0;
     }
 
     @Override

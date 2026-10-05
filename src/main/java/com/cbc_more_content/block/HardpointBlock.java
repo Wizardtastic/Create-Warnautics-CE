@@ -1,7 +1,10 @@
 package com.cbc_more_content.block;
 
+import com.cbc_more_content.bomb.BombSize;
 import com.cbc_more_content.compat.RadarCompat;
 import com.cbc_more_content.compat.SableDropCompat;
+import com.cbc_more_content.config.WarnauticsConfig;
+import com.cbc_more_content.item.BombSettingsKeyItem;
 import com.cbc_more_content.item.CruiseMissileItem;
 import com.cbc_more_content.item.DropBombItem;
 import com.cbc_more_content.item.HardpointItem;
@@ -58,7 +61,8 @@ import net.neoforged.neoforge.event.level.BlockEvent;
 public class HardpointBlock extends BaseEntityBlock implements SimpleWaterloggedBlock, IWrenchable {
     public static final MapCodec<HardpointBlock> CODEC = simpleCodec(HardpointBlock::new);
     public static final DirectionProperty FACING = BlockStateProperties.FACING;
-    /** Tracks the previous signal so only a rising edge releases. */
+    public static final DirectionProperty NOSE = DirectionProperty.create("nose", Direction.Plane.HORIZONTAL);
+
     public static final BooleanProperty POWERED = BlockStateProperties.POWERED;
 
     public static final BooleanProperty WATERLOGGED = BlockStateProperties.WATERLOGGED;
@@ -71,11 +75,18 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
     private static final VoxelShape SHAPE_EAST = Block.box(0, 0, 2, 8, 16, 14);
     private static final VoxelShape SHAPE_WEST = Block.box(8, 0, 2, 16, 16, 14);
 
+    private static final Vec3 DROP_HEADING = new Vec3(0.0D, -1.0D, 0.0D);
+
+    private static final Direction[] DROP_ORDER = {
+        Direction.DOWN, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP
+    };
+
     public HardpointBlock(Properties properties) {
         super(properties);
         this.registerDefaultState(this.stateDefinition
                 .any()
                 .setValue(FACING, Direction.DOWN)
+                .setValue(NOSE, Direction.NORTH)
                 .setValue(POWERED, false)
                 .setValue(WATERLOGGED, false));
     }
@@ -87,7 +98,7 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
 
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(FACING, POWERED, WATERLOGGED);
+        builder.add(FACING, NOSE, POWERED, WATERLOGGED);
     }
 
     @Nullable
@@ -111,10 +122,20 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
     public BlockState getStateForPlacement(BlockPlaceContext context) {
         Level level = context.getLevel();
         BlockPos pos = context.getClickedPos();
+        Direction clicked = context.getClickedFace();
         return this.defaultBlockState()
-                .setValue(FACING, context.getClickedFace())
+                .setValue(FACING, clicked)
+                .setValue(NOSE, noseForPlacement(context, clicked))
                 .setValue(POWERED, DropBombBlock.isReceivingPower(level, pos))
                 .setValue(WATERLOGGED, WaterPlacement.sourceAt(level, pos));
+    }
+
+    private static Direction noseForPlacement(BlockPlaceContext context, Direction clicked) {
+        if (clicked.getAxis() != Direction.Axis.Y) {
+            return clicked;
+        }
+        Direction look = context.getHorizontalDirection();
+        return look.getAxis() == Direction.Axis.Y ? Direction.NORTH : look;
     }
 
     @Override
@@ -140,13 +161,17 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
 
     @Override
     protected void tick(BlockState state, ServerLevel level, BlockPos pos, RandomSource random) {
+        if (level.getBlockEntity(pos) instanceof HardpointBlockEntity be && be.isReleasing()) {
+            releasePayload(level, pos);
+            return;
+        }
         if (!DropBombBlock.isReceivingPower(level, pos)) {
             if (state.getValue(POWERED)) {
                 level.setBlock(pos, state.setValue(POWERED, false), Block.UPDATE_CLIENTS);
             }
             return;
         }
-        releasePayload(level, pos, state);
+        releasePayload(level, pos);
     }
 
     @Override
@@ -158,6 +183,13 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
             Player player,
             InteractionHand hand,
             BlockHitResult hit) {
+        if (stack.getItem() instanceof BombSettingsKeyItem key) {
+            if (!(level.getBlockEntity(pos) instanceof HardpointBlockEntity be)) {
+                return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+            }
+            key.openBundleDial(level, pos, be);
+            return ItemInteractionResult.sidedSuccess(level.isClientSide);
+        }
         if (!mountable(stack) || !(level.getBlockEntity(pos) instanceof HardpointBlockEntity be) || be.hasPayload()) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
@@ -195,41 +227,107 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
         return stack.getItem() instanceof CruiseMissileItem;
     }
 
-    private static Direction releaseDirection(Direction facing) {
-        return facing.getAxis() == Direction.Axis.Y ? Direction.NORTH : facing;
-    }
-
-    private void releasePayload(ServerLevel level, BlockPos pos, BlockState state) {
-        if (!(level.getBlockEntity(pos) instanceof HardpointBlockEntity be) || !be.hasPayload()) {
+    private void releasePayload(ServerLevel level, BlockPos pos) {
+        if (!(level.getBlockEntity(pos) instanceof HardpointBlockEntity be)) {
+            return;
+        }
+        if (!be.hasPayload()) {
+            be.setReleasing(false);
             return;
         }
         ItemStack payload = be.payload();
-        Direction nose = releaseDirection(state.getValue(FACING));
         BlockPos link = be.radarLink();
 
         if (payload.getItem() instanceof DropBombItem bombItem && bombItem.getBlock() instanceof DropBombBlock bomb) {
-            var launch = bomb.prepareLaunchAlongNose(level, pos, nose, bomb.getBombSize());
-            bomb.launchPrepared(bomb.getBombSize(), launch);
-            be.consumeOneBomb();
+            releaseBundle(level, pos, be, bomb);
             return;
         }
         if (payload.getItem() instanceof CruiseMissileItem missileItem) {
             if (missileItem.getBlock() instanceof Aim9Block) {
-                releaseAim9(level, pos, nose, link, be);
+                releaseAim9(level, pos, link, be);
             } else {
-                releaseCruiseMissile(level, pos, nose, link, be);
+                releaseCruiseMissile(level, pos, link, be);
             }
         }
+        be.setReleasing(false);
     }
 
-    private static Vec3 releaseSpawn(BlockPos pos, Direction nose) {
-        return Vec3.atCenterOf(pos).add(nose.getStepX(), nose.getStepY(), nose.getStepZ());
+    private void releaseBundle(ServerLevel level, BlockPos pos, HardpointBlockEntity be, DropBombBlock bomb) {
+        boolean staggered = be.releaseDelayTicks() > 0;
+        int count = staggered ? 1 : DropBombItem.getCassette(be.payload());
+        BombSize size = bomb.getBombSize();
+
+        for (int released = 0; released < count; released++) {
+            var launch = prepareDrop(
+                    level,
+                    pos,
+                    size.entitySize * 0.5D,
+                    size.entitySize * 0.5D,
+                    size.launchDown * WarnauticsConfig.releaseImpulse(),
+                    DROP_HEADING);
+            if (count > 1) {
+                launch = new SableDropCompat.LaunchFrame(
+                        launch.level(),
+                        launch.pos()
+                                .add(
+                                        (level.getRandom().nextDouble() - 0.5D) * 0.24D,
+                                        0.0D,
+                                        (level.getRandom().nextDouble() - 0.5D) * 0.24D),
+                        launch.vel(),
+                        launch.orientation());
+            }
+            bomb.launchPrepared(size, launch);
+        }
+
+        if (staggered) {
+            be.consumeOneBomb();
+            if (be.hasPayload() && be.payload().getItem() instanceof DropBombItem) {
+                be.setReleasing(true);
+                level.scheduleTick(pos, this, be.releaseDelayTicks());
+            } else {
+                be.setReleasing(false);
+            }
+            return;
+        }
+        be.setPayload(ItemStack.EMPTY);
+        be.setReleasing(false);
+    }
+
+    private static SableDropCompat.LaunchFrame prepareDrop(
+            ServerLevel level, BlockPos pos, double halfWidth, double halfHeight, double separation, Vec3 heading) {
+        Vec3 spawn = dropSpawn(level, pos, halfWidth, halfHeight);
+        return SableDropCompat.resolveLaunch(level, pos, spawn, new Vec3(0.0D, -separation, 0.0D), heading);
+    }
+
+    public static Direction releaseNose(BlockState state) {
+        Direction facing = state.getValue(FACING);
+        return facing.getAxis() == Direction.Axis.Y ? state.getValue(NOSE) : facing;
+    }
+
+    private static Vec3 releaseHeading(ServerLevel level, BlockPos pos) {
+        return Vec3.atLowerCornerOf(releaseNose(level.getBlockState(pos)).getNormal());
+    }
+
+    private static Vec3 dropSpawn(ServerLevel level, BlockPos pos, double halfWidth, double halfHeight) {
+        Vec3 center = Vec3.atCenterOf(pos);
+        Vec3 fallback = null;
+        for (Direction dir : DROP_ORDER) {
+            Vec3 candidate = center.add(dir.getStepX(), dir.getStepY(), dir.getStepZ());
+            AABB box = new AABB(candidate, candidate).inflate(halfWidth, halfHeight, halfWidth);
+            if (fallback == null) {
+                fallback = candidate;
+            }
+            if (level.noCollision(box)) {
+                return candidate;
+            }
+        }
+        return fallback == null ? center : fallback;
     }
 
     private static void releaseCruiseMissile(
-            ServerLevel level, BlockPos pos, Direction nose, @Nullable BlockPos link, HardpointBlockEntity be) {
-        Vec3 heading = new Vec3(nose.getStepX(), nose.getStepY(), nose.getStepZ());
-        var frame = SableDropCompat.resolveLaunch(level, pos, releaseSpawn(pos, nose), Vec3.ZERO, heading);
+            ServerLevel level, BlockPos pos, @Nullable BlockPos link, HardpointBlockEntity be) {
+        Vec3 heading = releaseHeading(level, pos);
+        var frame = prepareDrop(level, pos, 0.5D, 0.4D, 0.0D, heading);
         CruiseMissileProjectile missile = ModEntityTypes.CRUISE_MISSILE.get().create(frame.level());
         if (missile == null) {
             return;
@@ -238,7 +336,8 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
         missile.setTargetEntity(relayedTarget(level, link));
 
         missile.setPos(frame.pos());
-        missile.launch(frame.orientation(), frame.vel());
+        Vec3 forward = frame.orientation() == null ? heading : frame.orientation();
+        missile.drop(forward, frame.vel());
         frame.level().addFreshEntity(missile);
         frame.level()
                 .playSound(
@@ -253,16 +352,16 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
         be.setPayload(ItemStack.EMPTY);
     }
 
-    private static void releaseAim9(
-            ServerLevel level, BlockPos pos, Direction nose, @Nullable BlockPos link, HardpointBlockEntity be) {
-        Vec3 heading = new Vec3(nose.getStepX(), nose.getStepY(), nose.getStepZ());
-        var frame = SableDropCompat.resolveLaunch(level, pos, releaseSpawn(pos, nose), Vec3.ZERO, heading);
+    private static void releaseAim9(ServerLevel level, BlockPos pos, @Nullable BlockPos link, HardpointBlockEntity be) {
+        Vec3 heading = releaseHeading(level, pos);
+        var frame = prepareDrop(level, pos, 0.12D, 0.12D, 0.0D, heading);
         Aim9Projectile missile = ModEntityTypes.AIM9.get().create(frame.level());
         if (missile == null) {
             return;
         }
         missile.setPos(frame.pos());
-        missile.launch(relayedTarget(level, link), frame.vel(), heading);
+        Vec3 forward = frame.orientation() == null ? heading : frame.orientation();
+        missile.drop(relayedTarget(level, link), frame.vel(), forward);
         frame.level().addFreshEntity(missile);
         frame.level()
                 .playSound(
@@ -290,7 +389,6 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
                     return tracked;
                 }
             } catch (IllegalArgumentException ignored) {
-                // Synthetic track ids are not UUIDs; fall through to the position.
             }
         }
         Vec3 at = RadarCompat.selectedTargetPos(level, link);
@@ -364,11 +462,22 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
         BlockPos pos = context.getClickedPos();
         Direction face = context.getClickedFace();
         Direction facing = state.getValue(FACING);
-        Direction.Axis axis = face.getAxis();
-        if (axis == facing.getAxis()) {
-            axis = axis == Direction.Axis.Y ? Direction.Axis.X : Direction.Axis.Y;
+        BlockState rotated;
+        if (facing.getAxis() == Direction.Axis.Y && face.getAxis() == Direction.Axis.Y) {
+            rotated = state.setValue(NOSE, state.getValue(NOSE).getClockWise(Direction.Axis.Y));
+        } else {
+            Direction.Axis axis = face.getAxis();
+            if (axis == facing.getAxis()) {
+                axis = axis == Direction.Axis.Y ? Direction.Axis.X : Direction.Axis.Y;
+            }
+            Direction tipped = facing.getClockWise(axis);
+            rotated = state.setValue(FACING, tipped)
+                    .setValue(
+                            NOSE,
+                            tipped.getAxis() != Direction.Axis.Y
+                                    ? tipped
+                                    : facing.getAxis() == Direction.Axis.Y ? state.getValue(NOSE) : facing);
         }
-        BlockState rotated = state.setValue(FACING, facing.getClockWise(axis));
         if (level.isClientSide) {
             return InteractionResult.SUCCESS;
         }

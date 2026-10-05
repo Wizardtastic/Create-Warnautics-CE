@@ -25,7 +25,7 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 @GameTestHolder(CBCMoreContent.MOD_ID)
 @PrefixGameTestTemplate(false)
 public class CruiseWarheadGameTests {
-    @GameTest(template = "empty", batch = "cruise_warhead", timeoutTicks = 120)
+    @GameTest(template = "empty", batch = "cruise_warhead", timeoutTicks = 600)
     public static void actualMissileUsesMoabProfileWithLowerPowerAndDamage(GameTestHelper helper) {
         var level = helper.getLevel();
         var top = helper.absolutePos(new BlockPos(100, 80, 100));
@@ -38,7 +38,7 @@ public class CruiseWarheadGameTests {
         level.getChunkAt(cowCell);
         level.getChunkSource()
                 .addRegionTicket(
-                        TicketType.create("cruise_warhead_target", Long::compareTo, 200),
+                        TicketType.create("cruise_warhead_target", Long::compareTo, 1200),
                         new ChunkPos(cowCell),
                         3,
                         cowCell.asLong(),

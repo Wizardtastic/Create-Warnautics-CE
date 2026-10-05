@@ -10,7 +10,6 @@ import com.cbc_more_content.item.DetonatorItem;
 import com.cbc_more_content.item.DropBombItem;
 import com.cbc_more_content.item.HardpointItem;
 import com.cbc_more_content.item.SeaMineItem;
-import com.cbc_more_content.item.TargetDesignatorItem;
 import com.cbc_more_content.item.TripwireCoilItem;
 import com.cbc_more_content.item.WireCuttersItem;
 import net.minecraft.core.registries.Registries;
@@ -93,10 +92,6 @@ public final class ModItems {
     /** One per slot: a charge is a placement, not ammunition to be carried in bulk. */
     public static final DeferredItem<C4Item> C4 =
             ITEMS.register("c4", () -> new C4Item(new Item.Properties().stacksTo(1)));
-
-    /** Pairs with a missile, then paints a hull for it to chase. */
-    public static final DeferredItem<TargetDesignatorItem> TARGET_DESIGNATOR =
-            ITEMS.register("target_designator", () -> new TargetDesignatorItem(new Item.Properties().stacksTo(1)));
 
     /** A coil of tripwire: tie one post, then another within eight blocks. */
     public static final DeferredItem<TripwireCoilItem> TRIPWIRE_COIL =

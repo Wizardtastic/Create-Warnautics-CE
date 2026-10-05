@@ -2,25 +2,16 @@ package com.cbc_more_content.network;
 
 import com.cbc_more_content.block.Aim9BlockEntity;
 import com.cbc_more_content.block.C4BlockEntity;
-import com.cbc_more_content.block.CruiseMissileBlock;
-import com.cbc_more_content.block.CruiseMissileBlockEntity;
 import com.cbc_more_content.block.DropBombBlock;
 import com.cbc_more_content.block.SirenBlockEntity;
 import com.cbc_more_content.command.WarnauticsCommands;
-import com.cbc_more_content.compat.MissileDesignatorTargeting;
 import com.cbc_more_content.compat.RadarCompat;
-import com.cbc_more_content.compat.SableTrackCompat;
 import com.cbc_more_content.item.BombSettingsKeyItem;
-import com.cbc_more_content.item.TargetDesignatorItem;
 import com.cbc_more_content.item.WireCuttersItem;
-import com.cbc_more_content.munitions.CruiseMissileProjectile;
-import com.cbc_more_content.munitions.MissileFlightProfile;
 import com.cbc_more_content.radar.InterceptSettingsStore;
 import com.cbc_more_content.settings.WarnauticsServerSettings;
 import com.cbc_more_content.siren.SirenSource;
 import com.cbc_more_content.util.ReflectiveDispatcher;
-import java.util.ArrayList;
-import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -28,14 +19,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.Vec3;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -65,12 +51,6 @@ public final class ModNetworking {
                         RadarSettingsPayload.TYPE,
                         RadarSettingsPayload.STREAM_CODEC,
                         ModNetworking::handleRadarSettings)
-                .playToServer(
-                        MissileFirePayload.TYPE, MissileFirePayload.STREAM_CODEC, ModNetworking::handleMissileFire)
-                .playToServer(
-                        MissileTargetPayload.TYPE,
-                        MissileTargetPayload.STREAM_CODEC,
-                        ModNetworking::handleMissileTarget)
                 .playToServer(C4WirePayload.TYPE, C4WirePayload.STREAM_CODEC, ModNetworking::handleWireCut)
                 .playToServer(C4CodePayload.TYPE, C4CodePayload.STREAM_CODEC, ModNetworking::handleC4Code)
                 .playToServer(
@@ -324,44 +304,6 @@ public final class ModNetworking {
         });
     }
 
-    private static void handleMissileTarget(MissileTargetPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> {
-            if (!(context.player() instanceof ServerPlayer player)) {
-                return;
-            }
-            Level level = player.level();
-            BlockPos pos = payload.pos();
-            if (!canAccess(player, pos)) {
-                return;
-            }
-            if (!holdsSettingsKey(player)
-                    || !(level.getBlockEntity(pos) instanceof CruiseMissileBlockEntity guidance)) {
-                return;
-            }
-            if (payload.flightProfile() < 0 || payload.flightProfile() > 2) {
-                return;
-            }
-            if (payload.mode() == 1) {
-                guidance.armRemote();
-            } else if (payload.mode() == 2) {
-                // The client hides this mode without Create Radar; the server refuses it
-                // outright, so a hand-built packet cannot park a missile on a picture
-                // that nothing is painting.
-                if (!RadarCompat.loaded()) {
-                    return;
-                }
-                guidance.armIntercept();
-            } else {
-                guidance.setTarget(new BlockPos(
-                        Mth.clamp(payload.x(), -30_000_000, 30_000_000),
-                        Mth.clamp(payload.y(), level.getMinBuildHeight(), level.getMaxBuildHeight()),
-                        Mth.clamp(payload.z(), -30_000_000, 30_000_000)));
-            }
-            guidance.setFlightProfile(MissileFlightProfile.byId(payload.flightProfile()));
-            level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.6f, 1.4f);
-        });
-    }
-
     /** Opens the intercept panel with the network's current settings. */
     private static void handleOpenRadarSettings(OpenRadarSettingsPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
@@ -392,69 +334,6 @@ public final class ModNetworking {
             }
             InterceptSettingsStore.get(level).set(controller, payload.settings());
             level.playSound(null, controller, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.7f, 1.3f);
-        });
-    }
-
-    private static void handleMissileFire(MissileFirePayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> {
-            if (!(context.player() instanceof ServerPlayer player) || !(player.level() instanceof ServerLevel level)) {
-                return;
-            }
-            ItemStack designator = player.getMainHandItem().getItem() instanceof TargetDesignatorItem
-                    ? player.getMainHandItem()
-                    : player.getOffhandItem();
-            if (!(designator.getItem() instanceof TargetDesignatorItem)) {
-                return;
-            }
-            var missiles = TargetDesignatorItem.resolveBoundMissiles(level, designator);
-            if (!missiles.contains(payload.missile())) {
-                return;
-            }
-            if (!ModList.get().isLoaded("sable")) {
-                return;
-            }
-
-            int runtimeId = SableTrackCompat.runtimeIdOf(level, payload.subLevel());
-            Vec3 centre = SableTrackCompat.centreOf(level, payload.subLevel());
-            if (runtimeId < 0 || centre == null) {
-                return;
-            }
-            var fired = new ArrayList<BlockPos>();
-            var salvo = UUID.randomUUID();
-            var airborne = new ArrayList<CruiseMissileProjectile>();
-            for (BlockPos missile : missiles) {
-                if (!MissileDesignatorTargeting.canControl(player, missile)
-                        || !MissileDesignatorTargeting.canTarget(player, missile, payload.subLevel(), centre)) {
-                    continue;
-                }
-                BlockState state = level.getBlockState(missile);
-                if (!(state.getBlock() instanceof CruiseMissileBlock)
-                        || !(level.getBlockEntity(missile) instanceof CruiseMissileBlockEntity guidance)
-                        || guidance.guidance() != CruiseMissileBlockEntity.Guidance.REMOTE) {
-                    continue;
-                }
-                guidance.lockOnto(runtimeId, centre);
-                var launched = CruiseMissileBlock.launch(level, missile, state);
-                if (launched != null) {
-                    airborne.add(launched);
-                    fired.add(missile);
-                }
-            }
-            var salvoOrigin = Vec3.ZERO;
-            for (var missile : airborne) {
-                salvoOrigin = salvoOrigin.add(missile.position());
-            }
-            salvoOrigin = salvoOrigin.scale(1.0 / Math.max(1, airborne.size()));
-            for (int index = 0; index < airborne.size(); index++) {
-                airborne.get(index).setSalvo(salvo, index, airborne.size(), salvoOrigin);
-            }
-            TargetDesignatorItem.removeLaunched(designator, fired);
-            if (!fired.isEmpty()) {
-                player.displayClientMessage(
-                        Component.translatable("message.cbc_more_content.designator.fired", fired.size())
-                                .withStyle(ChatFormatting.GREEN),
-                        true);
-            }
         });
     }
 

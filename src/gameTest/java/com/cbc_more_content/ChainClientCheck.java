@@ -225,7 +225,6 @@ public final class ChainClientCheck {
                                 != net.minecraft.client.renderer.RenderType.lines(),
                         "Target markers use a dedicated overlay layer");
                 checked.add("All missile facings use live rendering and target marker overlay initializes");
-                TargetMarkerPixelCheck.run();
                 MissilePlumePixelCheck.run();
                 checked.add(
                         "Veil missile volume compiled, rendered at seven angles, animates, respects depth and motor cutoff");
@@ -257,8 +256,6 @@ public final class ChainClientCheck {
                 checked.add("AIM-9 item, six orientations and supplied texture baked; live renderer registered");
                 Aim9ModelPixelCheck.run();
                 checked.add("AIM-9 live renderer produces textured pixels in all six orientations");
-                checked.add(
-                        "Target marker pixels visible through hull depth at six camera rotations; view state restored");
                 Files.writeString(Path.of("chain-client-check.txt"), "PASS\n" + String.join("\n", checked) + "\n");
                 System.out.println("WARNAUTICS_CHAIN_CLIENT_CHECK_PASS " + checked);
             } catch (Throwable failure) {

@@ -272,7 +272,7 @@ public final class MissileFlightClientCheck {
             failure.printStackTrace();
         }
         if (error == null) {
-            MissileSettingsClientCheck.begin();
+            Minecraft.getInstance().stop();
         } else {
             Minecraft.getInstance().stop();
         }

@@ -40,7 +40,6 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.SIREN.get());
                         output.accept(ModItems.DETONATOR.get());
                         output.accept(ModItems.WIRE_CUTTERS.get());
-                        output.accept(ModItems.TARGET_DESIGNATOR.get());
                         output.accept(ModItems.SETTINGS_KEY.get());
                         output.accept(ModItems.MUSIC_DISC_BREAKER_OF_SKIES.get());
                     })

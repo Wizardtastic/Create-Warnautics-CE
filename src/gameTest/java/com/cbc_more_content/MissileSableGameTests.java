@@ -4,12 +4,10 @@ import com.cbc_more_content.block.CruiseMissileBlock;
 import com.cbc_more_content.block.CruiseMissileBlockEntity;
 import com.cbc_more_content.compat.MissileDesignatorTargeting;
 import com.cbc_more_content.compat.SableDropCompat;
-import com.cbc_more_content.item.TargetDesignatorItem;
 import com.cbc_more_content.munitions.CruiseMissileProjectile;
 import com.cbc_more_content.munitions.MissileFlightProfile;
 import com.cbc_more_content.registry.ModBlocks;
 import com.cbc_more_content.registry.ModEntityTypes;
-import com.cbc_more_content.registry.ModItems;
 import com.mojang.authlib.GameProfile;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
@@ -26,15 +24,11 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.TicketType;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.gametest.GameTestHolder;
@@ -181,41 +175,6 @@ public class MissileSableGameTests {
                 level.removeBlock(pos, false);
             }
         }
-        helper.succeed();
-    }
-
-    @GameTest(template = "empty", batch = "missile_binding_move", timeoutTicks = 100)
-    public static void designatorFollowsAssemblyAndWorksBeyondEightBlocks(GameTestHelper helper) {
-        var level = helper.getLevel();
-        var at = helper.absolutePos(new BlockPos(30, 60, 30));
-        var cells = place(level, at, Direction.UP);
-        var player = new FakePlayer(level, new GameProfile(UUID.randomUUID(), "missile-bind-test"));
-        var remote = new ItemStack(ModItems.TARGET_DESIGNATOR.get());
-        player.setItemInHand(InteractionHand.MAIN_HAND, remote);
-        remote.getItem()
-                .useOn(new UseOnContext(
-                        player,
-                        InteractionHand.MAIN_HAND,
-                        new BlockHitResult(at.getCenter(), Direction.NORTH, at, false)));
-        var ship = assemble(level, at, cells);
-        var local = ship.getPlot().getCenterBlock();
-        helper.assertTrue(
-                local.equals(TargetDesignatorItem.resolveBoundMissile(level, remote)),
-                "Binding follows persistent missile identity into Sable plot");
-        var world = ship.logicalPose().transformPosition(local.getCenter());
-        player.setPos(world.add(30, 0, 0));
-        helper.assertTrue(
-                MissileDesignatorTargeting.canControl(player, local),
-                "Designator can launch from a cabin thirty blocks away");
-        player.setPos(world.add(221, 0, 0));
-        helper.assertFalse(
-                MissileDesignatorTargeting.canControl(player, local), "Remote control still has a finite range");
-        for (var pos : List.of(local, local.above(), local.below())) {
-            level.removeBlock(pos, false);
-        }
-        helper.assertTrue(
-                TargetDesignatorItem.resolveBoundMissile(level, remote) == null,
-                "Destroyed missile cannot stay bound to a replacement");
         helper.succeed();
     }
 

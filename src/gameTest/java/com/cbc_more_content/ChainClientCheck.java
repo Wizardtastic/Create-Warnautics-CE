@@ -256,6 +256,8 @@ public final class ChainClientCheck {
                 checked.add("AIM-9 item, six orientations and supplied texture baked; live renderer registered");
                 Aim9ModelPixelCheck.run();
                 checked.add("AIM-9 live renderer produces textured pixels in all six orientations");
+                HardpointPayloadPixelCheck.run();
+                checked.add("Mounted hardpoint payloads render a distinct frame for every pylon nose direction");
                 Files.writeString(Path.of("chain-client-check.txt"), "PASS\n" + String.join("\n", checked) + "\n");
                 System.out.println("WARNAUTICS_CHAIN_CLIENT_CHECK_PASS " + checked);
             } catch (Throwable failure) {

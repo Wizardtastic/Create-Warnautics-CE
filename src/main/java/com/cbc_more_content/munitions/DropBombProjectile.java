@@ -8,15 +8,23 @@ import com.cbc_more_content.effects.BombSympatheticDetonation;
 import com.cbc_more_content.registry.ModBlocks;
 import com.cbc_more_content.registry.ModEntityTypes;
 import javax.annotation.Nonnull;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Position;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.syncher.EntityDataAccessor;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import rbasamoyai.createbigcannons.index.CBCMunitionPropertiesHandlers;
@@ -28,45 +36,113 @@ import rbasamoyai.createbigcannons.munitions.big_cannon.config.BigCannonProjecti
 import rbasamoyai.createbigcannons.munitions.config.components.BallisticPropertiesComponent;
 import rbasamoyai.createbigcannons.munitions.config.components.EntityDamagePropertiesComponent;
 
-/**
- * Drop bomb — always detonates on hard impact / ground stick (no impact-fuze RNG duds).
- * Crater via CBC {@link rbasamoyai.createbigcannons.munitions.ShellExplosion}.
- */
 public class DropBombProjectile extends FuzedBigCannonProjectile {
 
+    public static final float DUD_CHANCE = 0.02f;
+
+    private static final Block[] BURIAL_SOIL = {
+        Blocks.GRASS_BLOCK,
+        Blocks.DIRT,
+        Blocks.COARSE_DIRT,
+        Blocks.ROOTED_DIRT,
+        Blocks.GRAVEL,
+        Blocks.SAND,
+        Blocks.RED_SAND
+    };
+
+    private static final double BURY_DEPTH = 2.0D;
+    private static final double BURY_STEP = 1.0D / 16.0D;
+    static final int BURY_STEPS = (int) (BURY_DEPTH / BURY_STEP);
+    static final int BURY_TICKS_PER_STEP = (3 * 24000) / BURY_STEPS;
+
+    private static final int IMPACT_ANSWER_TICKS = 60;
+
+    private static final EntityDataAccessor<Boolean> FAILED =
+            SynchedEntityData.defineId(DropBombProjectile.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> LODGED =
+            SynchedEntityData.defineId(DropBombProjectile.class, EntityDataSerializers.BOOLEAN);
+
     private boolean detonated;
+    private boolean clientImpact;
+    private int impactAnswerTicks;
+    private int buryTicks;
+    private int burySteps;
 
     public DropBombProjectile(EntityType<? extends DropBombProjectile> type, Level level) {
         super(type, level);
-        // Warnautics owns the long falling whistle. Suppress CBC's short shell
-        // fly-by loop so both systems cannot stack on the same bomb.
         this.setLocalSoundCooldown(-1);
     }
 
-    /**
-     * Sable collision bridge for a placed block that was turned into a loose
-     * physics body. Keeping detonation inside the projectile class means this path
-     * reads the same reloadable CBC munition properties as a redstone-released bomb.
-     */
+    @Override
+    protected void defineSynchedData(SynchedEntityData.Builder builder) {
+        super.defineSynchedData(builder);
+        builder.define(FAILED, false);
+        builder.define(LODGED, false);
+    }
+
+    public boolean failedToDetonate() {
+        return this.entityData.get(FAILED);
+    }
+
+    public boolean isLodged() {
+        return this.entityData.get(LODGED);
+    }
+
+    protected boolean shouldFailToDetonate() {
+        return this.random.nextFloat() < DUD_CHANCE;
+    }
+
     public final void detonateFromPhysicalImpact(Vec3 position) {
         this.forceDetonate(position);
     }
 
     @Override
+    protected boolean onClip(ProjectileContext ctx, Vec3 start, Vec3 end) {
+        if (this.failedToDetonate() || this.isLodged()) {
+            return false;
+        }
+        return super.onClip(ctx, start, end);
+    }
+
+    @Override
     protected boolean onImpact(HitResult hitResult, ImpactResult impactResult, ProjectileContext projectileContext) {
-        // Drop bombs are impact explosives, not penetrating cannon shells. Calling
-        // CBC's normal impact path first lets the projectile break a block, bounce
-        // or wait for probabilistic fuze handling. It also leaves the client copy
-        // hovering until the delayed server removal arrives.
         if (this.level().isClientSide) {
-            this.removeNextTick = true;
-            return true;
+            this.clientImpact = true;
+            this.impactAnswerTicks = IMPACT_ANSWER_TICKS;
+            this.setDeltaMovement(Vec3.ZERO);
+            return false;
+        }
+        if (this.failedToDetonate() || this.isLodged()) {
+            return false;
         }
         if (this.detonated || this.isRemoved()) {
             return true;
         }
         this.forceDetonate(this.impactDetonationPosition(hitResult));
         return true;
+    }
+
+    @Override
+    protected ImpactResult calculateBlockPenetration(
+            ProjectileContext projectileContext, BlockState state, BlockHitResult blockHitResult) {
+        if (!this.level().isClientSide
+                && !this.failedToDetonate()
+                && !this.isLodged()
+                && !this.detonated
+                && !this.isRemoved()
+                && this.shouldFailToDetonate()) {
+            this.entityData.set(FAILED, true);
+            this.setDeltaMovement(Vec3.ZERO);
+            this.setProjectileMass(0.0f);
+            this.impactPos = blockHitResult.getBlockPos().immutable();
+            state.onProjectileHit(this.level(), state, blockHitResult, this);
+            return new ImpactResult(ImpactResult.KinematicOutcome.STOP, false);
+        }
+        if (this.failedToDetonate() || this.isLodged()) {
+            state.onProjectileHit(this.level(), state, blockHitResult, this);
+            return new ImpactResult(ImpactResult.KinematicOutcome.STOP, false);
+        }
+        return super.calculateBlockPenetration(projectileContext, state, blockHitResult);
     }
 
     private Vec3 impactDetonationPosition(HitResult hitResult) {
@@ -80,9 +156,6 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
             return hit;
         }
 
-        // Aerial bombs burst just inside the struck surface instead of at an
-        // arbitrary air-side coordinate. This produces a grounded, slightly
-        // deeper crater while retaining immediate collision-tick detonation.
         double baseDepth =
                 switch (this.bombSize()) {
                     case SMALL -> 0.18D;
@@ -97,11 +170,96 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
 
     @Override
     public void tick() {
+        if (this.tickFailureState()) {
+            return;
+        }
         super.tick();
-        if (!this.level().isClientSide && !this.detonated && !this.isRemoved() && this.isInGround()) {
-            // Failed / lingering stick in dirt — still cook off immediately for bombs.
+        if (this.level().isClientSide || this.isRemoved() || this.detonated) {
+            return;
+        }
+        if (this.failedToDetonate()) {
+            this.removeNextTick = false;
+            if (this.isInGround()) {
+                this.beginLodge();
+            }
+        } else if (this.isInGround()) {
             this.forceDetonate(this.position());
         }
+    }
+
+    protected boolean tickFailureState() {
+        if (this.level().isClientSide) {
+            if (this.clientImpact || this.isLodged()) {
+                this.tickHeldCopy();
+                return true;
+            }
+            return false;
+        }
+        if (this.isLodged()) {
+            this.tickLodged();
+            return true;
+        }
+        return false;
+    }
+
+    private void tickHeldCopy() {
+        this.baseTick();
+        this.setDeltaMovement(Vec3.ZERO);
+        if (this.isLodged() || this.failedToDetonate()) {
+            return;
+        }
+        if (this.impactAnswerTicks > 0 && --this.impactAnswerTicks == 0) {
+            this.discard();
+        }
+    }
+
+    private void tickLodged() {
+        if (this.removeNextTick) {
+            this.discard();
+            return;
+        }
+        this.baseTick();
+        this.tryBuryStep();
+    }
+
+    void tryBuryStep() {
+        if (this.burySteps >= BURY_STEPS) {
+            return;
+        }
+        if (++this.buryTicks < BURY_TICKS_PER_STEP) {
+            return;
+        }
+        this.buryTicks = 0;
+        double nextY = this.getY() - BURY_STEP;
+        if (!this.burialSoilBelow(nextY)) {
+            this.burySteps = BURY_STEPS;
+            return;
+        }
+        this.setPos(this.getX(), nextY, this.getZ());
+        this.burySteps++;
+    }
+
+    private boolean burialSoilBelow(double y) {
+        BlockPos pos = BlockPos.containing(this.getX(), y - 0.05D, this.getZ());
+        BlockState state = this.level().getBlockState(pos);
+        for (Block soil : BURIAL_SOIL) {
+            if (state.is(soil)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected void beginLodge() {
+        if (this.isLodged()) {
+            return;
+        }
+        this.entityData.set(LODGED, true);
+        this.setDeltaMovement(Vec3.ZERO);
+        this.nextVelocity = null;
+        this.impactPos = null;
+        this.buryTicks = 0;
+        this.burySteps = this.burialSoilBelow(this.getY()) ? 0 : BURY_STEPS;
     }
 
     @Override
@@ -121,9 +279,10 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
         if (this.detonated || this.level().isClientSide) {
             return;
         }
+        if (this.failedToDetonate() || this.isLodged()) {
+            return;
+        }
         this.detonated = true;
-        // Mark removal before crater calculation: even a very large/Sable-aware
-        // explosion cannot leave this projectile eligible for another impact.
         this.removeNextTick = true;
 
         BigCannonCommonShellProperties properties = this.getAllProperties();
@@ -144,9 +303,9 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
 
     @Override
     public boolean hurt(DamageSource source, float amount) {
-        // Explosion#finalizeExplosion damages entities. Without this gate a stick of
-        // bombs released one tick apart detonated each other in mid-air, which is what
-        // destroyed the carrier aircraft in practice.
+        if (this.failedToDetonate() || this.isLodged()) {
+            return false;
+        }
         if (!BombSympatheticDetonation.allowsCookoffFrom(null)) {
             return false;
         }
@@ -162,9 +321,12 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
         return !(entity instanceof DropBombProjectile) && super.canHitEntity(entity);
     }
 
-    /** Nearby TNT / shell / bomb blast — cook off in flight. */
     public void sympatheticDetonate() {
-        if (this.detonated || this.level().isClientSide || this.isRemoved()) {
+        if (this.detonated
+                || this.level().isClientSide
+                || this.isRemoved()
+                || this.failedToDetonate()
+                || this.isLodged()) {
             return;
         }
         this.forceDetonate(this.position());
@@ -190,8 +352,6 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
         Block block = this.visualBlock();
         BlockState state = block.defaultBlockState().setValue(DropBombBlock.FACING, Direction.NORTH);
         if (this.getType() == ModEntityTypes.SEA_BOMB.get()) {
-            // Reserved state variants split the projectile body from its animated
-            // author-model propeller. Placed sea bombs still use cassette=1.
             state = state.setValue(DropBombBlock.POWERED, true).setValue(DropBombBlock.CASSETTE, 4);
         }
         return state;
@@ -229,6 +389,24 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
             return BombSize.MOAB;
         }
         return BombSize.SMALL;
+    }
+
+    @Override
+    public void addAdditionalSaveData(CompoundTag tag) {
+        super.addAdditionalSaveData(tag);
+        tag.putBoolean("FailedToDetonate", this.failedToDetonate());
+        tag.putBoolean("Lodged", this.isLodged());
+        tag.putInt("BuryTicks", this.buryTicks);
+        tag.putInt("BurySteps", this.burySteps);
+    }
+
+    @Override
+    public void readAdditionalSaveData(CompoundTag tag) {
+        super.readAdditionalSaveData(tag);
+        this.entityData.set(FAILED, tag.getBoolean("FailedToDetonate"));
+        this.entityData.set(LODGED, tag.getBoolean("Lodged"));
+        this.buryTicks = Mth.clamp(tag.getInt("BuryTicks"), 0, BURY_TICKS_PER_STEP);
+        this.burySteps = Mth.clamp(tag.getInt("BurySteps"), 0, BURY_STEPS);
     }
 
     @Nonnull

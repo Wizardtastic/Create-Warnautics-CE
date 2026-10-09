@@ -27,12 +27,6 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import rbasamoyai.createbigcannons.CBCCompatTransformers;
 import rbasamoyai.createbigcannons.munitions.ProjectileContext;
 
-/**
- * Sea bomb: air/ground impact detonates normally (power between small & medium).
- * Hitting water (world or Sable plot) arms the propeller — swims ~800 blocks with
- * buzz + splash, then sinks and detonates underwater with a heavy splash plume.
- * Solid blocks always stop it (clip collision) — no phasing through walls.
- */
 public class SeaBombProjectile extends DropBombProjectile {
     public static final byte PHASE_AIR = 0;
     public static final byte PHASE_SWIM = 1;
@@ -43,7 +37,6 @@ public class SeaBombProjectile extends DropBombProjectile {
 
     private static final double SWIM_RANGE = 800.0D;
     private static final double SWIM_SPEED = 1.15D;
-    /** Underwater blast — nearly full power (was intentionally soft before). */
     private static final float UNDERWATER_BLOCK_POWER = 0.85f;
 
     private static final float UNDERWATER_ENTITY_POWER = 1.25f;
@@ -69,9 +62,6 @@ public class SeaBombProjectile extends DropBombProjectile {
         return this.entityData.get(PHASE);
     }
 
-    /**
-     * Smooth client-side spin — does not depend on entity-data packet cadence.
-     */
     public float clientPropellerDegrees(float partialTick, float degPerTick) {
         return (this.tickCount + partialTick) * degPerTick;
     }
@@ -85,9 +75,6 @@ public class SeaBombProjectile extends DropBombProjectile {
     }
 
     private boolean touchingWater() {
-        // Swim movement bypasses CBC's tick. isInWater() can therefore still describe
-        // the entry tick forever. Query the current hull and actual fluid height.
-        // The native query also respects Sable's dry, water-occluded compartments.
         return this.updateFluidHeightAndDoFluidPushing(FluidTags.WATER, 0.0D);
     }
 
@@ -95,7 +82,6 @@ public class SeaBombProjectile extends DropBombProjectile {
         if (state.isAir()) {
             return false;
         }
-        // Pure water / bubble columns are not obstacles.
         if (this.isWaterFluid(state.getFluidState())
                 && state.getCollisionShape(this.level(), pos).isEmpty()) {
             return false;
@@ -104,9 +90,6 @@ public class SeaBombProjectile extends DropBombProjectile {
         return !shape.isEmpty();
     }
 
-    /**
-     * Move by {@code motion}; if a solid collider is in the way, detonate and return true.
-     */
     private boolean moveOrDetonate(Vec3 motion, float blockPower, float entityPower) {
         Vec3 start = this.position();
         Vec3 end = start.add(motion);
@@ -118,17 +101,14 @@ public class SeaBombProjectile extends DropBombProjectile {
             BlockPos hitPos = hit.getBlockPos();
             BlockState hitState = this.level().getBlockState(hitPos);
             if (this.isSolidObstacle(hitPos, hitState)) {
-                this.forceDetonate(hit.getLocation(), blockPower, entityPower);
-                return true;
+                return this.lodgeOrDetonate(hit.getLocation(), blockPower, entityPower);
             }
         }
 
-        // Safety: destination cell itself is solid (clip miss on thin edges / already overlapping).
         BlockPos dest = BlockPos.containing(end.x, end.y, end.z);
         BlockState destState = this.level().getBlockState(dest);
         if (this.isSolidObstacle(dest, destState)) {
-            this.forceDetonate(end, blockPower, entityPower);
-            return true;
+            return this.lodgeOrDetonate(end, blockPower, entityPower);
         }
 
         this.xo = start.x;
@@ -136,6 +116,15 @@ public class SeaBombProjectile extends DropBombProjectile {
         this.zo = start.z;
         this.setPos(end);
         return false;
+    }
+
+    private boolean lodgeOrDetonate(Vec3 at, float blockPower, float entityPower) {
+        if (this.failedToDetonate() || this.isLodged()) {
+            this.beginLodge();
+            return true;
+        }
+        this.forceDetonate(at, blockPower, entityPower);
+        return true;
     }
 
     @Override
@@ -164,11 +153,15 @@ public class SeaBombProjectile extends DropBombProjectile {
         }
         byte phase = this.phase();
         if (phase == PHASE_SWIM || phase == PHASE_SINK) {
-            if (impactResult.kinematics() != ImpactResult.KinematicOutcome.BOUNCE) {
-                this.forceDetonate(hitResult.getLocation(), UNDERWATER_BLOCK_POWER, UNDERWATER_ENTITY_POWER);
-                return true;
+            if (impactResult.kinematics() == ImpactResult.KinematicOutcome.BOUNCE) {
+                return false;
             }
-            return false;
+            if (this.failedToDetonate() || this.isLodged()) {
+                this.beginLodge();
+                return false;
+            }
+            this.forceDetonate(hitResult.getLocation(), UNDERWATER_BLOCK_POWER, UNDERWATER_ENTITY_POWER);
+            return true;
         }
         return super.onImpact(hitResult, impactResult, projectileContext);
     }
@@ -189,9 +182,11 @@ public class SeaBombProjectile extends DropBombProjectile {
 
     @Override
     public void tick() {
-        // Swim/sink skip AbstractCannonProjectile.tick(), so honour CBC's removeNextTick here.
         if (this.removeNextTick) {
             this.discard();
+            return;
+        }
+        if (this.tickFailureState()) {
             return;
         }
 
@@ -205,8 +200,6 @@ public class SeaBombProjectile extends DropBombProjectile {
             return;
         }
 
-        // A submerged launch must start the propeller before CBC treats water as
-        // an impact. Re-entry keeps the spent range instead of granting fresh fuel.
         if (!this.level().isClientSide && this.touchingWater()) {
             this.enterSwim(this.position());
             return;
@@ -242,7 +235,6 @@ public class SeaBombProjectile extends DropBombProjectile {
         this.swimHeading = flat.normalize();
         this.setOrientation(this.swimHeading);
         this.setDeltaMovement(this.swimHeading.scale(SWIM_SPEED));
-        // Nudge slightly into the water so we don't instantly re-clip the surface block.
         this.setPos(at.add(this.swimHeading.scale(0.05D)));
 
         if (this.level() instanceof ServerLevel server) {
@@ -271,13 +263,8 @@ public class SeaBombProjectile extends DropBombProjectile {
             return;
         }
 
-        // A torpedo launched from a submerged rack starts directly in the swim
-        // phase; do not hand it back to CBC's normal impact physics merely because
-        // its hitbox straddles a water boundary for one tick.
         if (!this.touchingWater()) {
             this.setPhase(PHASE_AIR);
-            // Preserve exit momentum; CBC applies the configured gravity and drag
-            // from here, producing an arc rather than powered flight or a sudden stop.
             this.nextVelocity = null;
             this.impactPos = null;
             this.setInGround(false);
@@ -356,12 +343,6 @@ public class SeaBombProjectile extends DropBombProjectile {
         }
     }
 
-    /**
-     * The torpedo parting the water: bubbles seeded ahead of the nose with sideways
-     * velocity to spread into a widening V, a sheet along each flank, and cavitation
-     * filling in behind the screw. The outward velocity is what reads as displaced
-     * water rather than a trail hanging where the torpedo used to be.
-     */
     private void spawnSwimParticles(ServerLevel server) {
         Vec3 p = this.position();
         Vec3 heading = this.swimHeading;
@@ -372,7 +353,6 @@ public class SeaBombProjectile extends DropBombProjectile {
         float ang = this.propellerDegrees * Mth.DEG_TO_RAD;
         RandomSource random = this.random;
 
-        // Bow wave: water shouldered aside at the nose, thrown out and slightly back.
         for (int s = -1; s <= 1; s += 2) {
             double spread = 0.22D + random.nextDouble() * 0.12D;
             Vec3 from = nose.add(side.scale(s * spread));
@@ -393,7 +373,6 @@ public class SeaBombProjectile extends DropBombProjectile {
             }
         }
 
-        // Hull sheet: a thin curtain of bubbles sliding down each flank.
         if ((this.tickCount % 2) == 0) {
             for (int s = -1; s <= 1; s += 2) {
                 Vec3 flank = p.add(side.scale(s * 0.34D));
@@ -412,7 +391,6 @@ public class SeaBombProjectile extends DropBombProjectile {
             }
         }
 
-        // Screw cavitation: a tight helix of bubbles torn off the blades.
         double blurR = 0.42D;
         for (int i = 0; i < 4; i++) {
             double a = ang + (Math.PI * 2.0D * i / 4.0D);
@@ -426,15 +404,12 @@ public class SeaBombProjectile extends DropBombProjectile {
             }
         }
 
-        // Collapse zone: the parted water folding back in behind the screw.
         emit(server, ParticleTypes.BUBBLE, wake.x, wake.y, wake.z, 7, 0.20D, 0.14D, 0.20D, 0.05D);
         emit(server, ParticleTypes.BUBBLE_COLUMN_UP, wake.x, wake.y - 0.05D, wake.z, 4, 0.14D, 0.10D, 0.14D, 0.03D);
 
-        // Surface chop / spray when near the waterline.
         if ((this.tickCount % 2) == 0 && this.nearSurface()) {
             emit(server, ParticleTypes.SPLASH, p.x, p.y + 0.35D, p.z, 8, 0.38D, 0.08D, 0.38D, 0.07D);
             emit(server, ParticleTypes.FISHING, p.x, p.y + 0.25D, p.z, 3, 0.3D, 0.05D, 0.3D, 0.03D);
-            // Surface V: foam thrown out to either side of the track.
             for (int s = -1; s <= 1; s += 2) {
                 Vec3 crest = p.add(side.scale(s * 0.5D)).subtract(heading.scale(0.3D));
                 emit(
@@ -454,7 +429,6 @@ public class SeaBombProjectile extends DropBombProjectile {
             }
         }
 
-        // Occasional deeper turbulence puffs.
         if ((this.tickCount % 5) == 0) {
             emit(server, ParticleTypes.UNDERWATER, p.x, p.y, p.z, 8, 0.4D, 0.25D, 0.4D, 0.0D);
         }
@@ -476,7 +450,6 @@ public class SeaBombProjectile extends DropBombProjectile {
         }
     }
 
-    /** True when there is air (or no water) within ~1 block above — surface wake. */
     private boolean nearSurface() {
         BlockPos above = BlockPos.containing(this.getX(), this.getY() + 1.0D, this.getZ());
         FluidState fluid = this.level().getFluidState(above);
@@ -550,7 +523,6 @@ public class SeaBombProjectile extends DropBombProjectile {
                             -heading.z * 0.05D);
         }
 
-        // Continuous wake on client for smoothness between server packets.
         if (this.phase() == PHASE_SWIM) {
             Vec3 side = new Vec3(-heading.z, 0.0D, heading.x);
             Vec3 wake = p.subtract(heading.scale(0.9D));
@@ -575,8 +547,6 @@ public class SeaBombProjectile extends DropBombProjectile {
                             0.04D,
                             0.0D);
 
-            // Bow spray, thrown outward so the parted water is visible every frame
-            // rather than only on the ticks the server happens to send.
             Vec3 nose = p.add(heading.scale(0.5D));
             for (int s = -1; s <= 1; s += 2) {
                 Vec3 from = nose.add(side.scale(s * 0.26D));
@@ -624,11 +594,6 @@ public class SeaBombProjectile extends DropBombProjectile {
         }
     }
 
-    /**
-     * Sends particles with the long-distance flag set. The no-player overload of
-     * {@code ServerLevel#sendParticles} hardcodes {@code longDistance = false} and so
-     * drops every packet past 32 blocks — invisible for a torpedo that runs 800.
-     */
     private static <T extends ParticleOptions> void emit(
             ServerLevel server,
             T type,

@@ -60,13 +60,14 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
         pose.pushPose();
         MountShift shift = mountShiftFor(block);
         if (facing.getAxis() == Direction.Axis.Y) {
-            pose.translate(0.0D, -shift.down(), -shift.forward());
+            pose.translate(nose.getStepX() * shift.forward(), -shift.down(), nose.getStepZ() * shift.forward());
             pose.translate(0.5D, 0.5D, 0.5D);
             if (block instanceof CruiseMissileBlock) {
                 rotateCruise(pose, nose);
             } else if (block instanceof Aim9Block) {
-                rotateAim9(pose, nose);
+                rotateNorthIdentity(pose, nose);
             } else {
+                rotateNorthIdentity(pose, nose);
                 pose.mulPose(Axis.XP.rotationDegrees(-90));
                 if (isMoab(block)) {
                     pose.mulPose(Axis.YP.rotationDegrees(-90));
@@ -81,7 +82,7 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
             pose.translate(facing.getStepX() * slide, facing.getStepY() * slide, facing.getStepZ() * slide);
             pose.translate(0.5D, 0.5D, 0.5D);
             if (block instanceof Aim9Block) {
-                rotateAim9(pose, facing);
+                rotateNorthIdentity(pose, facing);
             } else if (block instanceof CruiseMissileBlock) {
                 rotateCruise(pose, facing);
             } else {
@@ -198,7 +199,7 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
         }
     }
 
-    private static void rotateAim9(PoseStack pose, Direction facing) {
+    private static void rotateNorthIdentity(PoseStack pose, Direction facing) {
         switch (facing) {
             case NORTH -> {}
             case SOUTH -> pose.mulPose(Axis.YP.rotationDegrees(180));

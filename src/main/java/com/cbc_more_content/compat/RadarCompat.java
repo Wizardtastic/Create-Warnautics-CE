@@ -2,13 +2,18 @@ package com.cbc_more_content.compat;
 
 import com.cbc_more_content.CBCMoreContent;
 import com.cbc_more_content.radar.InterceptSettings;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
@@ -44,7 +49,7 @@ public final class RadarCompat {
         return ModList.get().isLoaded(MOD_ID);
     }
 
-    public record Contact(String id, Vec3 position, Vec3 velocity) {}
+    public record Contact(String id, Vec3 position, Vec3 velocity, boolean hull) {}
 
     public static boolean isController(@Nullable BlockEntity blockEntity) {
         if (blockEntity == null || !resolve()) {
@@ -77,10 +82,25 @@ public final class RadarCompat {
     private static Method monitorGetSelectedEntity;
 
     @Nullable
+    private static Field monitorSelectedEntity;
+
+    @Nullable
     private static Method monitorGetTargetPos;
 
     @Nullable
+    private static Method monitorGetRadarSnapshots;
+
+    @Nullable
+    private static Method monitorGetTracks;
+
+    @Nullable
     private static Object targetingDefault;
+
+    @Nullable
+    private static Class<?> snapshotClass;
+
+    @Nullable
+    private static Method snapshotPosAccessor;
 
     public static boolean isMonitor(@Nullable BlockEntity blockEntity) {
         if (blockEntity == null || !resolveMonitor()) {
@@ -102,7 +122,14 @@ public final class RadarCompat {
             return null;
         }
         try {
-            Object id = monitorGetSelectedEntity.invoke(controller);
+            Object id;
+            if (monitorGetSelectedEntity != null) {
+                id = monitorGetSelectedEntity.invoke(controller);
+            } else if (monitorSelectedEntity != null) {
+                id = monitorSelectedEntity.get(controller);
+            } else {
+                return null;
+            }
             return id instanceof String name && !name.isBlank() ? name : null;
         } catch (Throwable t) {
             CBCMoreContent.LOGGER.debug("Radar screen selection read failed: {}", t.toString());
@@ -140,6 +167,16 @@ public final class RadarCompat {
         }
     }
 
+    @Nullable
+    private static BlockEntity controllerOf(BlockEntity bound) {
+        try {
+            Object controller = monitorGetController.invoke(bound);
+            return controller instanceof BlockEntity be ? be : bound;
+        } catch (Throwable t) {
+            return bound;
+        }
+    }
+
     private static boolean resolveMonitor() {
         if (monitorResolved) {
             return monitorClass != null;
@@ -152,10 +189,8 @@ public final class RadarCompat {
             Class<?> config = Class.forName(TARGETING_CONFIG_CLASS);
             monitorClass = Class.forName(MONITOR_CLASS);
             monitorGetController = monitorClass.getMethod("getController");
-            monitorGetSelectedEntity = monitorClass.getMethod("getSelectedEntity");
             monitorGetTargetPos = monitorClass.getMethod("getTargetPos", config);
             targetingDefault = config.getField("DEFAULT").get(null);
-            return true;
         } catch (Throwable t) {
             CBCMoreContent.LOGGER.info(
                     "Create Radar is present but its screen API did not resolve; "
@@ -164,6 +199,33 @@ public final class RadarCompat {
             monitorClass = null;
             return false;
         }
+        try {
+            monitorGetSelectedEntity = monitorClass.getMethod("getSelectedEntity");
+        } catch (Throwable ignored) {
+            monitorGetSelectedEntity = null;
+        }
+        if (monitorGetSelectedEntity == null) {
+            try {
+                monitorSelectedEntity = monitorClass.getField("selectedEntity");
+            } catch (Throwable ignored) {
+                monitorSelectedEntity = null;
+            }
+        }
+        try {
+            monitorGetRadarSnapshots = monitorClass.getMethod("getRadarSnapshots");
+        } catch (Throwable ignored) {
+            monitorGetRadarSnapshots = null;
+        }
+        try {
+            monitorGetTracks = monitorClass.getMethod("getTracks");
+        } catch (Throwable ignored) {
+            monitorGetTracks = null;
+        }
+        if (monitorGetSelectedEntity == null && monitorSelectedEntity == null) {
+            CBCMoreContent.LOGGER.info("Create Radar exposes neither getSelectedEntity() nor selectedEntity; "
+                    + "the hardpoint relay cannot read the screen's selection.");
+        }
+        return true;
     }
 
     @Nullable
@@ -180,10 +242,11 @@ public final class RadarCompat {
             if (contact.velocity().length() < settings.minSpeed()) {
                 continue;
             }
-            if (settings.hullsOnly() && !SableDropCompat.isInsideSubLevel(level, contact.position())) {
+            if (settings.hullsOnly()
+                    && !contact.hull()
+                    && !SableDropCompat.isInsideSubLevel(level, contact.position())) {
                 continue;
             }
-            // Blocks per tick, weighted heavily, less a mild penalty for being far off.
             double score = contact.velocity().length() * 40.0D - Math.sqrt(distanceSqr) / maxRange;
             if (score > bestScore) {
                 bestScore = score;
@@ -223,10 +286,103 @@ public final class RadarCompat {
             return List.of();
         }
         List<Contact> out = new ArrayList<>();
-        for (BlockEntity source : sourcesNear(level, controller)) {
-            readContacts(source, out);
+        BlockEntity bound = level.getBlockEntity(controller);
+        if (isController(bound)) {
+            readContacts(level, bound, out);
+            return out;
+        }
+        Set<BlockPos> read = new HashSet<>();
+        for (BlockEntity source : monitorNetworkSources(level, bound)) {
+            if (read.add(source.getBlockPos())) {
+                readContacts(level, source, out);
+            }
+        }
+        if (out.isEmpty()) {
+            for (BlockEntity source : sourcesNear(level, controller)) {
+                if (read.add(source.getBlockPos())) {
+                    readContacts(level, source, out);
+                }
+            }
+        }
+        if (out.isEmpty()) {
+            readMonitorTracks(level, bound, out);
         }
         return out;
+    }
+
+    private static List<BlockEntity> monitorNetworkSources(Level level, @Nullable BlockEntity bound) {
+        if (bound == null || !isMonitor(bound) || monitorGetRadarSnapshots == null) {
+            return List.of();
+        }
+        BlockEntity monitor = controllerOf(bound);
+        try {
+            Object snapshots = monitorGetRadarSnapshots.invoke(monitor);
+            if (!(snapshots instanceof Collection<?> list)) {
+                return List.of();
+            }
+            List<BlockEntity> found = new ArrayList<>();
+            for (Object snapshot : list) {
+                if (snapshot == null) {
+                    continue;
+                }
+                BlockPos radarPos = snapshotPos(snapshot);
+                if (radarPos == null) {
+                    continue;
+                }
+                BlockEntity source = level.getBlockEntity(radarPos);
+                if (isController(source)) {
+                    found.add(source);
+                }
+            }
+            return found;
+        } catch (Throwable t) {
+            CBCMoreContent.LOGGER.debug("Radar network snapshot read failed: {}", t.toString());
+            return List.of();
+        }
+    }
+
+    @Nullable
+    private static BlockPos snapshotPos(Object snapshot) {
+        try {
+            Class<?> type = snapshot.getClass();
+            if (snapshotPosAccessor == null || snapshotClass != type) {
+                snapshotClass = type;
+                snapshotPosAccessor = type.getMethod("radarPos");
+            }
+            return snapshotPosAccessor.invoke(snapshot) instanceof BlockPos pos ? pos : null;
+        } catch (Throwable t) {
+            snapshotPosAccessor = null;
+            return null;
+        }
+    }
+
+    private static void readMonitorTracks(Level level, @Nullable BlockEntity bound, List<Contact> out) {
+        if (bound == null || !resolveMonitor() || monitorGetTracks == null || !isMonitor(bound)) {
+            return;
+        }
+        try {
+            Object tracks = monitorGetTracks.invoke(controllerOf(bound));
+            if (tracks instanceof Collection<?> list) {
+                for (Object track : list) {
+                    if (track != null) {
+                        readTrack(level, track, out);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            CBCMoreContent.LOGGER.debug("Radar screen track read failed: {}", t.toString());
+        }
+    }
+
+    private static boolean isShipId(Level level, String id) {
+        if (!(level instanceof ServerLevel server)) {
+            return false;
+        }
+        try {
+            return SableDropCompat.subLevelByUuid(server, UUID.fromString(id)) != null;
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
 
     private static List<BlockEntity> sourcesNear(Level level, BlockPos controller) {
@@ -289,7 +445,7 @@ public final class RadarCompat {
         return cachedSources;
     }
 
-    private static void readContacts(BlockEntity source, List<Contact> out) {
+    private static void readContacts(Level level, BlockEntity source, List<Contact> out) {
         try {
             if (!(Boolean) isRunning.invoke(source)) {
                 return;
@@ -299,15 +455,23 @@ public final class RadarCompat {
                 return;
             }
             for (Object track : raw) {
-                if (track == null) {
-                    continue;
+                if (track != null) {
+                    readTrack(level, track, out);
                 }
-                Object id = contactId.invoke(track);
-                Object position = contactPosition.invoke(track);
-                Object velocity = contactVelocity.invoke(track);
-                if (id instanceof String name && position instanceof Vec3 at) {
-                    out.add(new Contact(name, at, velocity instanceof Vec3 moving ? moving : Vec3.ZERO));
-                }
+            }
+        } catch (Throwable t) {
+            CBCMoreContent.LOGGER.debug("Radar contact read failed: {}", t.toString());
+        }
+    }
+
+    private static void readTrack(Level level, Object track, List<Contact> out) {
+        try {
+            Object id = contactId.invoke(track);
+            Object position = contactPosition.invoke(track);
+            Object velocity = contactVelocity.invoke(track);
+            if (id instanceof String name && position instanceof Vec3 at) {
+                out.add(new Contact(
+                        name, at, velocity instanceof Vec3 moving ? moving : Vec3.ZERO, isShipId(level, name)));
             }
         } catch (Throwable t) {
             CBCMoreContent.LOGGER.debug("Radar contact read failed: {}", t.toString());

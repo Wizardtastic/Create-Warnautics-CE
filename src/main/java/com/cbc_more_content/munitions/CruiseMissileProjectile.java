@@ -55,14 +55,15 @@ public class CruiseMissileProjectile extends Entity {
     public static final int EJECT_TICKS = 14;
     public static final double EJECT_SPEED = 0.62D;
     private static final double EJECT_GRAVITY = 0.03D;
-    private static final int DROP_TICKS = 10;
+    public static final int DROP_TICKS = 4;
 
     private static final double DROP_SPEED = 0.6D;
 
-    private static final double TURN_RATE = 0.11D;
+    private static final double TURN_RATE = 0.095D;
+
     private static final double LOOKAHEAD = 36.0D;
     private static final double TERMINAL_RANGE = 44.0D;
-    private static final double TERMINAL_TURN_RATE = 0.30D;
+    private static final double TERMINAL_TURN_RATE = 0.22D;
     private static final double FUSE_RANGE = 2.4D;
     private static final double JINK_DOT = 0.55D;
     private static final float JINK_CHANCE = 0.4f;
@@ -108,6 +109,8 @@ public class CruiseMissileProjectile extends Entity {
     private ChunkPos ticketCenter;
 
     private final MissileTargetingState targeting = new MissileTargetingState();
+
+    private boolean contactIsHull;
 
     public CruiseMissileProjectile(EntityType<? extends CruiseMissileProjectile> type, Level level) {
         super(type, level);
@@ -467,7 +470,11 @@ public class CruiseMissileProjectile extends Entity {
         }
         if (this.targeting.guidance() == Guidance.INTERCEPT) {
             Vec3 tracked = this.radarAim();
-            return tracked == null ? null : this.dispersedAim(tracked, 1.8);
+            if (tracked == null) {
+                return null;
+            }
+            this.trackingHull = this.contactIsHull;
+            return this.dispersedAim(tracked, this.contactIsHull ? .6 : 1.8);
         }
         if (this.targeting.guidance() == Guidance.LOCK
                 && this.targeting.lockedSubLevel() >= 0
@@ -503,6 +510,7 @@ public class CruiseMissileProjectile extends Entity {
         if (this.targeting.contact() != null) {
             var held = RadarCompat.contactById(this.level(), this.targeting.controller(), this.targeting.contact());
             if (held != null) {
+                this.contactIsHull = held.hull();
                 return held.position();
             }
             this.targeting.setContact(null);
@@ -514,6 +522,7 @@ public class CruiseMissileProjectile extends Entity {
         if (fresh == null) {
             return null;
         }
+        this.contactIsHull = fresh.hull();
         this.targeting.setContact(fresh.id());
         return fresh.position();
     }

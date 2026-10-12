@@ -30,12 +30,15 @@ import net.minecraft.world.phys.Vec3;
 public class Aim9Projectile extends Entity {
     public static final int EJECT_TICKS = 14;
     public static final int MOTOR_TICKS = 140;
-    public static final int DROP_TICKS = 10;
+    public static final int DROP_TICKS = 4;
 
     private static final double DROP_SPEED = 0.6D;
 
     private static final double APPROACH_RANGE = 36;
     private static final double RECOVERY_TURN_RATE = .14;
+    private static final double EARLY_TURN_RATE = .35;
+
+    private static final double TURN_RATE = .55;
     private static final int TICKET_DISTANCE = 4;
     private static final EntityDataAccessor<Boolean> POWERED =
             SynchedEntityData.defineId(Aim9Projectile.class, EntityDataSerializers.BOOLEAN);
@@ -43,6 +46,12 @@ public class Aim9Projectile extends Entity {
 
     @Nullable
     private UUID targetId;
+
+    @Nullable
+    private UUID targetShipId;
+
+    @Nullable
+    private Vec3 lastShipCentre;
 
     private int ejectTicks = EJECT_TICKS;
     private boolean dropped;
@@ -54,6 +63,7 @@ public class Aim9Projectile extends Entity {
     private Vec3 lastTargetVelocity = Vec3.ZERO;
     private Vec3 approachOffset = Vec3.ZERO;
     private double closestApproach = Double.MAX_VALUE;
+    private int stalledTicks;
     private int approachNumber;
     private int recoveryTicks;
     private boolean approachChecked;
@@ -86,6 +96,15 @@ public class Aim9Projectile extends Entity {
     @Nullable
     public UUID targetId() {
         return targetId;
+    }
+
+    @Nullable
+    public UUID targetShipId() {
+        return targetShipId;
+    }
+
+    public void lockHull(UUID ship) {
+        this.targetShipId = ship;
     }
 
     public void launch(@Nullable Entity target, Vec3 inheritedVelocity) {
@@ -129,6 +148,7 @@ public class Aim9Projectile extends Entity {
         }
         server.getChunkSource().addRegionTicket(TICKET, chunk, TICKET_DISTANCE, getUUID());
         Entity target = targetId == null ? null : server.getEntity(targetId);
+        Vec3 hullCentre = targetShipId == null ? null : SableDropCompat.subLevelCentreByUuid(server, targetShipId);
         Vec3 motion = getDeltaMovement().subtract(blastDrift);
         if (ejectTicks > 0) {
             ejectTicks--;
@@ -148,8 +168,10 @@ public class Aim9Projectile extends Entity {
             }
         } else {
             motorTicks++;
-            if (targetId != null) {
-                if (target == null || !target.isAlive()) {
+            if (targetId != null || targetShipId != null) {
+                boolean tracked = (targetId != null && target != null && target.isAlive())
+                        || (targetShipId != null && hullCentre != null);
+                if (!tracked) {
                     if (++lostTicks > 12) {
                         finish(null, position(), false);
                         return;
@@ -182,7 +204,12 @@ public class Aim9Projectile extends Entity {
                                 target.getDeltaMovement(),
                                 speed);
                 heading = MissileCollision.turn(
-                        heading, aim, recovering ? RECOVERY_TURN_RATE : motorTicks < 10 ? .16 : .30);
+                        heading, aim, recovering ? RECOVERY_TURN_RATE : motorTicks < 10 ? EARLY_TURN_RATE : TURN_RATE);
+            } else if (hullCentre != null) {
+                Vec3 shipVelocity = lastShipCentre == null ? Vec3.ZERO : hullCentre.subtract(lastShipCentre);
+                lastShipCentre = hullCentre;
+                Vec3 aim = lead(hullCentre.subtract(position()), shipVelocity, speed);
+                heading = MissileCollision.turn(heading, aim, motorTicks < 10 ? EARLY_TURN_RATE : TURN_RATE);
             }
             motion = heading.scale(speed).add(carrierVelocity);
             carrierVelocity = carrierVelocity.scale(.9);
@@ -259,6 +286,7 @@ public class Aim9Projectile extends Entity {
             recoveryTurning = false;
             approachChecked = false;
             closestApproach = Double.MAX_VALUE;
+            stalledTicks = 0;
         }
         if (!approachChecked && closing && distance <= APPROACH_RANGE) {
             approachChecked = true;
@@ -271,8 +299,14 @@ public class Aim9Projectile extends Entity {
             approachNumber++;
         }
         if (approachChecked) {
+            if (distance < closestApproach - 1.0E-3D) {
+                stalledTicks = 0;
+            } else if (distance > closestApproach + 2) {
+                stalledTicks++;
+            }
             closestApproach = Math.min(closestApproach, distance);
-            if (!closing && (distance > closestApproach + 2 || heading.dot(offset.normalize()) < -.1)) {
+            boolean stalled = stalledTicks > 20;
+            if ((!closing || stalled) && (distance > closestApproach + 2 || heading.dot(offset.normalize()) < -.1)) {
                 recovering = true;
                 recoveryTurning = false;
                 recoveryTicks = 0;
@@ -385,6 +419,7 @@ public class Aim9Projectile extends Entity {
     @Override
     protected void readAdditionalSaveData(CompoundTag tag) {
         targetId = tag.hasUUID("Target") ? tag.getUUID("Target") : null;
+        targetShipId = tag.hasUUID("TargetShip") ? tag.getUUID("TargetShip") : null;
         ejectTicks = Mth.clamp(tag.getInt("EjectTicks"), 0, EJECT_TICKS);
         dropped = tag.getBoolean("Dropped");
         motorTicks = Mth.clamp(tag.getInt("MotorTicks"), 0, MOTOR_TICKS + 1);
@@ -396,6 +431,7 @@ public class Aim9Projectile extends Entity {
         approachOffset = new Vec3(
                 tag.getDouble("ApproachOffsetX"), tag.getDouble("ApproachOffsetY"), tag.getDouble("ApproachOffsetZ"));
         approachChecked = tag.getBoolean("ApproachChecked");
+        stalledTicks = Math.max(0, tag.getInt("StalledTicks"));
         recovering = tag.getBoolean("Recovering");
         recoveryTurning = tag.getBoolean("RecoveryTurning");
         approachNumber = Math.max(0, tag.getInt("ApproachNumber"));
@@ -409,6 +445,9 @@ public class Aim9Projectile extends Entity {
     protected void addAdditionalSaveData(CompoundTag tag) {
         if (targetId != null) {
             tag.putUUID("Target", targetId);
+        }
+        if (targetShipId != null) {
+            tag.putUUID("TargetShip", targetShipId);
         }
         tag.putInt("EjectTicks", ejectTicks);
         tag.putBoolean("Dropped", dropped);
@@ -427,6 +466,7 @@ public class Aim9Projectile extends Entity {
         tag.putDouble("ApproachOffsetY", approachOffset.y);
         tag.putDouble("ApproachOffsetZ", approachOffset.z);
         tag.putBoolean("ApproachChecked", approachChecked);
+        tag.putInt("StalledTicks", stalledTicks);
         tag.putBoolean("Recovering", recovering);
         tag.putBoolean("RecoveryTurning", recoveryTurning);
         tag.putInt("ApproachNumber", approachNumber);

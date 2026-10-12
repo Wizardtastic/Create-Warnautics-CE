@@ -333,7 +333,14 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
             return;
         }
 
-        missile.setTargetEntity(relayedTarget(level, link));
+        UUID hull = relayedHull(level, link);
+        if (hull != null) {
+            missile.setGuidance(CruiseMissileBlockEntity.Guidance.INTERCEPT, null, -1);
+            missile.setController(link);
+            missile.setContact(relayedContact(level, link));
+        } else {
+            missile.setTargetEntity(relayedTarget(level, link));
+        }
 
         missile.setPos(frame.pos());
         Vec3 forward = frame.orientation() == null ? heading : frame.orientation();
@@ -361,7 +368,11 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
         }
         missile.setPos(frame.pos());
         Vec3 forward = frame.orientation() == null ? heading : frame.orientation();
-        missile.drop(relayedTarget(level, link), frame.vel(), forward);
+        UUID hull = relayedHull(level, link);
+        if (hull != null) {
+            missile.lockHull(hull);
+        }
+        missile.drop(hull == null ? relayedTarget(level, link) : null, frame.vel(), forward);
         frame.level().addFreshEntity(missile);
         frame.level()
                 .playSound(
@@ -377,11 +388,33 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
     }
 
     @Nullable
+    private static String relayedContact(ServerLevel level, @Nullable BlockPos link) {
+        if (link == null || !RadarCompat.loaded()) {
+            return null;
+        }
+        return RadarCompat.selectedContact(level, link);
+    }
+
+    @Nullable
+    private static UUID relayedHull(ServerLevel level, @Nullable BlockPos link) {
+        String contact = relayedContact(level, link);
+        if (contact == null) {
+            return null;
+        }
+        try {
+            UUID ship = UUID.fromString(contact);
+            return SableDropCompat.subLevelByUuid(level, ship) == null ? null : ship;
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    @Nullable
     private static Entity relayedTarget(ServerLevel level, @Nullable BlockPos link) {
         if (link == null || !RadarCompat.loaded()) {
             return null;
         }
-        String contact = RadarCompat.selectedContact(level, link);
+        String contact = relayedContact(level, link);
         if (contact != null) {
             try {
                 Entity tracked = level.getEntity(UUID.fromString(contact));

@@ -10,6 +10,7 @@ import dev.ryanhcode.sable.neoforge.mixinhelper.compatibility.create.raycasts.Sa
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -24,7 +25,6 @@ import rbasamoyai.createbigcannons.CBCCompatTransformers;
 public final class SableDropCompat {
     private SableDropCompat() {}
 
-    // —— queries ——
 
     public static boolean isInsideSubLevel(Level level, BlockPos pos) {
         try {
@@ -105,7 +105,6 @@ public final class SableDropCompat {
         return hit[0];
     }
 
-    /** Native voxel traversal, with only the departing airframe ignored, never its carrier. */
     public static boolean clearRay(ServerLevel level, Vec3 from, Vec3 to, Set<BlockPos> ignoredCells) {
         Predicate<BlockPos> world = pos -> !ignoredCells.contains(pos)
                 && !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty()
@@ -141,7 +140,39 @@ public final class SableDropCompat {
         return point.distanceToSqr(nearest) <= MAPPING_SLACK * MAPPING_SLACK;
     }
 
-    /** World-space centre of a sub-level by id, or null once it is gone. */
+    @javax.annotation.Nullable
+    public static dev.ryanhcode.sable.sublevel.SubLevel subLevelByUuid(ServerLevel level, UUID id) {
+        try {
+            ServerSubLevelContainer container = container(level);
+            return container == null ? null : container.getSubLevel(id);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    @javax.annotation.Nullable
+    public static Vec3 subLevelCentreByUuid(ServerLevel level, UUID id) {
+        try {
+            ServerSubLevelContainer container = container(level);
+            if (container == null) {
+                return null;
+            }
+            dev.ryanhcode.sable.sublevel.SubLevel sub = container.getSubLevel(id);
+            if (sub == null || sub.isRemoved()) {
+                return null;
+            }
+            BoundingBox3dc box = sub.boundingBox();
+            return box == null
+                    ? null
+                    : new Vec3(
+                            (box.minX() + box.maxX()) * 0.5D,
+                            (box.minY() + box.maxY()) * 0.5D,
+                            (box.minZ() + box.maxZ()) * 0.5D);
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
     public static Vec3 subLevelCentre(ServerLevel level, int id) {
         ServerSubLevelContainer container = container(level);
         if (container == null) {
@@ -163,14 +194,11 @@ public final class SableDropCompat {
         return null;
     }
 
-    // —— coordinate mapping ——
 
-    /** Maps a plot-local launch into parent-world space, adding the carrier's velocity. */
     public static LaunchFrame resolveLaunch(ServerLevel level, Vec3 localPos, Vec3 localVel, Vec3 localOrientation) {
         return resolveLaunch(level, BlockPos.containing(localPos), localPos, localVel, localOrientation);
     }
 
-    /** Resolve the owner from its rack, even when the muzzle lies outside its last occupied chunk. */
     public static LaunchFrame resolveLaunch(
             ServerLevel level, BlockPos anchor, Vec3 localPos, Vec3 localVel, Vec3 localOrientation) {
         try {
@@ -197,12 +225,6 @@ public final class SableDropCompat {
         return new LaunchFrame(level, localPos, localVel, localOrientation);
     }
 
-    /**
-     * Maps a detonation point into the world the blast should actually happen in.
-     * Done directly rather than through CBC's transformer list: a projectile impact
-     * callback keeps Sable's plot-space hit result, and no setup order may leave the
-     * blast thousands of blocks out in the storage grid.
-     */
     public static BlastTarget resolveWorldBlast(ServerLevel level, Vec3 localCenter) {
         try {
             if (Sable.HELPER.getContaining(level, localCenter) instanceof ServerSubLevel sub
@@ -221,7 +243,6 @@ public final class SableDropCompat {
         return resolveWorldBlast(level, localCenter);
     }
 
-    // —— small helpers ——
 
     private static ServerSubLevelContainer container(ServerLevel level) {
         try {

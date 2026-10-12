@@ -25,7 +25,6 @@ import rbasamoyai.createbigcannons.CBCCompatTransformers;
 public final class SableDropCompat {
     private SableDropCompat() {}
 
-
     public static boolean isInsideSubLevel(Level level, BlockPos pos) {
         try {
             return Sable.HELPER.getContaining(level, pos) != null;
@@ -194,7 +193,6 @@ public final class SableDropCompat {
         return null;
     }
 
-
     public static LaunchFrame resolveLaunch(ServerLevel level, Vec3 localPos, Vec3 localVel, Vec3 localOrientation) {
         return resolveLaunch(level, BlockPos.containing(localPos), localPos, localVel, localOrientation);
     }
@@ -242,7 +240,6 @@ public final class SableDropCompat {
         }
         return resolveWorldBlast(level, localCenter);
     }
-
 
     private static ServerSubLevelContainer container(ServerLevel level) {
         try {

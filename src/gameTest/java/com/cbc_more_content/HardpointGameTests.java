@@ -650,9 +650,16 @@ public class HardpointGameTests {
         helper.runAfterDelay(3, () -> {
             var after = (HardpointBlockEntity) level.getBlockEntity(pylon);
             helper.assertFalse(after.hasPayload(), "One signal empties both rails at once");
-            int dropped = level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8))
-                    .size();
-            helper.assertTrue(dropped == 2, "Both rounds are in the air, saw " + dropped);
+            var bombs = level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8));
+            helper.assertTrue(bombs.size() == 2, "Both rounds are in the air, saw " + bombs.size());
+            if (bombs.size() == 2) {
+                Vec3 first = bombs.get(0).position();
+                Vec3 second = bombs.get(1).position();
+                double separation = Math.max(Math.abs(first.x - second.x), Math.abs(first.z - second.z));
+                helper.assertTrue(
+                        Math.abs(separation - HardpointBlock.RAIL_SPACING) < 0.06D,
+                        "The two rails release a rail's width apart, saw " + separation);
+            }
             helper.succeed();
         });
     }

@@ -79,10 +79,6 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
     private static final VoxelShape SHAPE_EAST = Block.box(0, 0, 2, 8, 16, 14);
     private static final VoxelShape SHAPE_WEST = Block.box(8, 0, 2, 16, 16, 14);
 
-    /**
-     * The double and triple rails are cut three pixels shorter than the single pylon's
-     * body, so their hitboxes stop three pixels short of the far end as well.
-     */
     private static final VoxelShape RAIL_SHAPE_UP = Block.box(2, 0, 0, 14, 5, 16);
 
     private static final VoxelShape RAIL_SHAPE_DOWN = Block.box(2, 11, 0, 14, 16, 16);
@@ -119,15 +115,25 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
         return CODEC;
     }
 
-    /** How many rounds this pylon carries: one on a standard hardpoint, two or three on the rails. */
     public int slotCount() {
         return this.slotCount;
     }
 
-    /**
-     * The double and triple rails are too narrow for the big ordnance: cruise missiles,
-     * the large bomb and the MOAB all need the single rail.
-     */
+    public static final double RAIL_SPACING = 8.0D / 16.0D;
+
+    public static double railOffset(int slot, int slots) {
+        if (slots <= 1) {
+            return 0.0D;
+        }
+        double step = RAIL_SPACING / (slots - 1);
+        return (slot - (slots - 1) / 2.0D) * step;
+    }
+
+    public static Direction lateral(BlockState state) {
+        Direction facing = state.getValue(FACING);
+        return (facing.getAxis() == Direction.Axis.Y ? state.getValue(NOSE) : facing).getClockWise();
+    }
+
     public boolean acceptsPayload(ItemStack stack) {
         if (!mountable(stack)) {
             return false;
@@ -293,7 +299,6 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
             return;
         }
         if (be.isReleasing()) {
-            // A bundle on the dial's interval keeps dripping without a new signal.
             releaseRollingSlots(level, pos, be);
             return;
         }
@@ -311,7 +316,6 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
         }
     }
 
-    /** One bomb leaves each rail that is still running its bundle out. */
     private void releaseRollingSlots(ServerLevel level, BlockPos pos, HardpointBlockEntity be) {
         boolean anyRemaining = false;
         for (int slot = 0; slot < be.slotCount(); slot++) {
@@ -331,7 +335,9 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
                     size.entitySize * 0.5D,
                     size.entitySize * 0.5D,
                     size.launchDown * WarnauticsConfig.releaseImpulse(),
-                    DROP_HEADING);
+                    DROP_HEADING,
+                    slot,
+                    be.slotCount());
             DropGraceVisibility.grant(bomb.launchPrepared(size, launch));
             be.consumeOneBomb(slot);
             if (be.payloadIn(slot).isEmpty()) {
@@ -374,7 +380,9 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
                     size.entitySize * 0.5D,
                     size.entitySize * 0.5D,
                     size.launchDown * WarnauticsConfig.releaseImpulse(),
-                    DROP_HEADING);
+                    DROP_HEADING,
+                    slot,
+                    be.slotCount());
             if (count > 1) {
                 launch = new SableDropCompat.LaunchFrame(
                         launch.level(),
@@ -401,8 +409,15 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
     }
 
     private static SableDropCompat.LaunchFrame prepareDrop(
-            ServerLevel level, BlockPos pos, double halfWidth, double halfHeight, double separation, Vec3 heading) {
-        Vec3 spawn = dropSpawn(level, pos, halfWidth, halfHeight);
+            ServerLevel level,
+            BlockPos pos,
+            double halfWidth,
+            double halfHeight,
+            double separation,
+            Vec3 heading,
+            int slot,
+            int slots) {
+        Vec3 spawn = dropSpawn(level, pos, halfWidth, halfHeight, railOffset(slot, slots));
         return SableDropCompat.resolveLaunch(level, pos, spawn, new Vec3(0.0D, -separation, 0.0D), heading);
     }
 
@@ -415,11 +430,18 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
         return Vec3.atLowerCornerOf(releaseNose(level.getBlockState(pos)).getNormal());
     }
 
-    private static Vec3 dropSpawn(ServerLevel level, BlockPos pos, double halfWidth, double halfHeight) {
+    private static Vec3 dropSpawn(
+            ServerLevel level, BlockPos pos, double halfWidth, double halfHeight, double lateralOffset) {
         Vec3 center = Vec3.atCenterOf(pos);
+        Vec3 shift = Vec3.ZERO;
+        if (lateralOffset != 0.0D) {
+            Direction lateral = lateral(level.getBlockState(pos));
+            shift = new Vec3(lateral.getStepX() * lateralOffset, 0.0D, lateral.getStepZ() * lateralOffset);
+        }
         Vec3 fallback = null;
         for (Direction dir : DROP_ORDER) {
-            Vec3 candidate = center.add(dir.getStepX(), dir.getStepY(), dir.getStepZ());
+            Vec3 candidate =
+                    center.add(dir.getStepX(), dir.getStepY(), dir.getStepZ()).add(shift);
             AABB box = new AABB(candidate, candidate).inflate(halfWidth, halfHeight, halfWidth);
             if (fallback == null) {
                 fallback = candidate;
@@ -428,13 +450,13 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
                 return candidate;
             }
         }
-        return fallback == null ? center : fallback;
+        return fallback == null ? center.add(shift) : fallback;
     }
 
     private static void releaseCruiseMissile(
             ServerLevel level, BlockPos pos, @Nullable BlockPos link, HardpointBlockEntity be, int slot) {
         Vec3 heading = releaseHeading(level, pos);
-        var frame = prepareDrop(level, pos, 0.5D, 0.4D, 0.0D, heading);
+        var frame = prepareDrop(level, pos, 0.5D, 0.4D, 0.0D, heading, slot, be.slotCount());
         CruiseMissileProjectile missile = ModEntityTypes.CRUISE_MISSILE.get().create(frame.level());
         if (missile == null) {
             return;
@@ -470,7 +492,7 @@ public class HardpointBlock extends BaseEntityBlock implements SimpleWaterlogged
     private static void releaseAim9(
             ServerLevel level, BlockPos pos, @Nullable BlockPos link, HardpointBlockEntity be, int slot) {
         Vec3 heading = releaseHeading(level, pos);
-        var frame = prepareDrop(level, pos, 0.12D, 0.12D, 0.0D, heading);
+        var frame = prepareDrop(level, pos, 0.12D, 0.12D, 0.0D, heading, slot, be.slotCount());
         Aim9Projectile missile = ModEntityTypes.AIM9.get().create(frame.level());
         if (missile == null) {
             return;

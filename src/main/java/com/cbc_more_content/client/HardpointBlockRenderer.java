@@ -23,9 +23,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBlockEntity> {
-    /** Rail spacing at full spread — the double's two rails, and the triple's outer pair. */
-    private static final double RAIL_SPACING = 8.0D / 16.0D;
-
     /** The rails are cut three pixels shorter than the single pylon, so their rounds ride higher too. */
     private static final double RAIL_LIFT = 3.0D / 16.0D;
 
@@ -43,7 +40,6 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
         int slots = mount.getBlock() instanceof HardpointBlock hardpointBlock ? hardpointBlock.slotCount() : 1;
         // Outer rails keep their places and the middle one fills the gap, so a double
         // and a triple line up on the same grid the models were cut for.
-        double step = slots > 1 ? RAIL_SPACING / (slots - 1) : 0.0D;
         int count = Math.min(slots, hardpoint.payloads().size());
         for (int slot = 0; slot < count; slot++) {
             ItemStack payload = hardpoint.payloads().get(slot);
@@ -54,7 +50,7 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
                     blockItem,
                     payload,
                     mount,
-                    (slot - (slots - 1) / 2.0D) * step,
+                    HardpointBlock.railOffset(slot, slots),
                     slots > 1 ? RAIL_LIFT : 0.0D,
                     pose,
                     buffers,
@@ -96,7 +92,7 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
         // The rails stop three pixels short of the single pylon's body, so the rounds ride up with them.
         pose.translate(0.0D, lift, 0.0D);
         // Rails sit beside each other across the firing line, never along it.
-        Direction lateral = (facing.getAxis() == Direction.Axis.Y ? nose : facing).getClockWise();
+        Direction lateral = HardpointBlock.lateral(mount);
         pose.translate(
                 lateral.getStepX() * railOffset, lateral.getStepY() * railOffset, lateral.getStepZ() * railOffset);
         MountShift shift = mountShiftFor(block);

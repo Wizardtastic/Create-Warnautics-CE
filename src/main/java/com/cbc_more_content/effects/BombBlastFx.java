@@ -346,7 +346,10 @@ public final class BombBlastFx {
             }
             double smokeY = player.distanceToSqr(pos) < 6.25D ? pos.y + .8D : pos.y;
             Vec3 smokeOrigin = new Vec3(pos.x, smokeY, pos.z);
-            if (size == BombSize.SMALL || size == BombSize.MEDIUM || size == BombSize.SEA) {
+            if (size == BombSize.SMALL
+                    || size == BombSize.MEDIUM
+                    || size == BombSize.SEA
+                    || size == BombSize.LARGE_SEA) {
                 // CBC provides animated hot smoke and expanding trails; the soft body adds volume.
                 // Neither layer replaces the other, even in a busy chain reaction.
                 spawnCbcSmokeForPlayer(level, player, smokeOrigin, smokeScale, !breaching, lod);
@@ -499,6 +502,7 @@ public final class BombBlastFx {
         float intensity = (switch (size) {
                     case SMALL -> 0.95f;
                     case SEA -> 1.05f;
+                    case LARGE_SEA -> 1.4f;
                     case MEDIUM -> 1.8f;
                     case LARGE -> 1.55f;
                     case MOAB -> 2.4f;
@@ -518,15 +522,20 @@ public final class BombBlastFx {
         // Embers stay small and offset so they don't fill the camera.
         DustParticleOptions hot = new DustParticleOptions(
                 new Vector3f(1.0f, 0.82f, 0.18f),
-                size == BombSize.LARGE ? 1.35f : (size == BombSize.MEDIUM ? 1.15f : 0.95f));
+                size == BombSize.LARGE || size == BombSize.LARGE_SEA
+                        ? 1.35f
+                        : (size == BombSize.MEDIUM ? 1.15f : 0.95f));
         DustParticleOptions white = new DustParticleOptions(
                 new Vector3f(1.0f, 0.97f, 0.85f),
-                size == BombSize.LARGE ? 1.1f : (size == BombSize.MEDIUM ? 0.95f : 0.75f));
+                size == BombSize.LARGE || size == BombSize.LARGE_SEA
+                        ? 1.1f
+                        : (size == BombSize.MEDIUM ? 0.95f : 0.75f));
         int baseSparks = scaleFx(
                 size,
                 switch (size) {
                     case SMALL -> 12;
                     case SEA -> 7;
+                    case LARGE_SEA -> 12;
                     case MEDIUM -> 32;
                     case LARGE -> 16;
                     case MOAB -> 64;
@@ -542,6 +551,7 @@ public final class BombBlastFx {
                 switch (size) {
                     case SMALL -> 0.55D;
                     case SEA -> 0.7D;
+                    case LARGE_SEA -> 1.2D;
                     case MEDIUM -> 0.9D;
                     case LARGE -> 1.4D;
                     case MOAB -> 2.6D;
@@ -737,7 +747,7 @@ public final class BombBlastFx {
                 switch (size) {
                     case SMALL -> 2.0f;
                     case MEDIUM -> 3.0f;
-                    case SEA, LARGE -> 1.0f;
+                    case SEA, LARGE_SEA, LARGE -> 1.0f;
                     case MOAB -> 1.0f;
                 };
         return Math.max(1, Math.round(base * factor));
@@ -782,7 +792,7 @@ public final class BombBlastFx {
                         0.64f,
                         6.2f,
                         34.0D);
-                case SEA -> new FxProfile(
+                case SEA, LARGE_SEA -> new FxProfile(
                         // A step up from the small bomb's report: an underwater charge is a
                         // ship-killer, and it should sound like one through the water.
                         ModSounds.BOMB_EXPLOSION_MEDIUM.get(),

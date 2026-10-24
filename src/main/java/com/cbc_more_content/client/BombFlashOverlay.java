@@ -132,6 +132,7 @@ public final class BombFlashOverlay {
         return switch (size) {
             case SMALL -> 140.0D;
             case SEA -> 160.0D;
+            case LARGE_SEA -> 240.0D;
             case MEDIUM -> 240.0D;
             case LARGE -> 280.0D;
             case MOAB -> 420.0D;
@@ -142,6 +143,7 @@ public final class BombFlashOverlay {
         return switch (size) {
             case SMALL -> 0.25f;
             case SEA -> 0.3f;
+            case LARGE_SEA -> 0.6f;
             case MEDIUM -> 0.55f;
             case LARGE -> 0.8f;
             case MOAB -> 1.0f;

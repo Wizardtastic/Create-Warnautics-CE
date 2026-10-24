@@ -34,6 +34,9 @@ public final class ModBlocks {
     public static final DeferredBlock<DropBombBlock> SEA_BOMB = BLOCKS.register(
             "sea_bomb", () -> new DropBombBlock(bombProps(MapColor.COLOR_LIGHT_BLUE, 0.65f), BombSize.SEA));
 
+    public static final DeferredBlock<DropBombBlock> LARGE_SEA_BOMB = BLOCKS.register(
+            "large_sea_bomb", () -> new DropBombBlock(bombProps(MapColor.COLOR_BLUE, 0.8f), BombSize.LARGE_SEA));
+
     public static final DeferredBlock<DropBombBlock> MEDIUM_BOMB = BLOCKS.register(
             "medium_bomb", () -> new DropBombBlock(bombProps(MapColor.TERRACOTTA_GREEN, 0.8f), BombSize.MEDIUM));
 
@@ -71,6 +74,12 @@ public final class ModBlocks {
 
     public static final DeferredBlock<HardpointBlock> HARDPOINT =
             BLOCKS.register("hardpoint", () -> new HardpointBlock(bombProps(MapColor.METAL, 1.5f)));
+
+    public static final DeferredBlock<HardpointBlock> DOUBLE_HARDPOINT =
+            BLOCKS.register("double_hardpoint", () -> new HardpointBlock(bombProps(MapColor.METAL, 1.5f), 2));
+
+    public static final DeferredBlock<HardpointBlock> TRIPLE_HARDPOINT =
+            BLOCKS.register("triple_hardpoint", () -> new HardpointBlock(bombProps(MapColor.METAL, 1.5f), 3));
 
     public static final DeferredBlock<C4Block> C4 = BLOCKS.register(
             "c4",

@@ -1,0 +1,34 @@
+{
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": true,
+  "category": "misc",
+  "key": {
+    "C": {
+      "tag": "c:ingots/copper"
+    },
+    "I": {
+      "tag": "c:plates/iron"
+    },
+    "F": {
+      "item": "createbigcannons:impact_fuze"
+    },
+    "P": {
+      "item": "create:propeller"
+    },
+    "X": {
+      "tag": "createbigcannons:high_explosive_materials"
+    }
+  },
+  "pattern": [
+    "  F  ",
+    " ICI ",
+    "IXXXI",
+    "IXXXI",
+    " ICI ",
+    "  P  "
+  ],
+  "result": {
+    "count": 1,
+    "id": "cbc_more_content:large_sea_bomb"
+  }
+}

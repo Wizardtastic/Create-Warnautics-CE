@@ -1,0 +1,57 @@
+{
+  "variants": {
+    "facing=up,nose=north": {
+      "model": "cbc_more_content:block/double_hardpoint"
+    },
+    "facing=up,nose=east": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "y": 90
+    },
+    "facing=up,nose=south": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "y": 180
+    },
+    "facing=up,nose=west": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "y": 270
+    },
+    "facing=down,nose=north": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "x": 180
+    },
+    "facing=down,nose=east": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "x": 180,
+      "y": 90
+    },
+    "facing=down,nose=south": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "x": 180,
+      "y": 180
+    },
+    "facing=down,nose=west": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "x": 180,
+      "y": 270
+    },
+    "facing=north": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "x": 90
+    },
+    "facing=south": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "x": 90,
+      "y": 180
+    },
+    "facing=west": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "x": 90,
+      "y": 270
+    },
+    "facing=east": {
+      "model": "cbc_more_content:block/double_hardpoint",
+      "x": 90,
+      "y": 90
+    }
+  }
+}

@@ -10,6 +10,7 @@ import com.cbc_more_content.munitions.DropBombProjectile;
 import com.cbc_more_content.registry.ModBlocks;
 import com.cbc_more_content.registry.ModEntityTypes;
 import com.cbc_more_content.registry.ModItems;
+import com.cbc_more_content.util.DropGraceVisibility;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.authlib.GameProfile;
@@ -46,6 +47,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.neoforged.neoforge.common.util.FakePlayer;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
@@ -97,6 +99,21 @@ public class HardpointGameTests {
         BlockPos placed = ceiling.below();
         helper.assertTrue(
                 level.getBlockState(placed).is(ModBlocks.HARDPOINT.get()), "Placement lands in the clicked cell");
+        return placed;
+    }
+
+    /** Places any pylon variant from the ceiling onto the shared support cell. */
+    private static BlockPos placeRail(
+            GameTestHelper helper, FakePlayer player, net.minecraft.world.item.Item item, Block expected) {
+        player.setYRot(180.0F);
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(item));
+        var level = helper.getLevel();
+        BlockPos ceiling = helper.absolutePos(SUPPORT).above();
+        level.setBlockAndUpdate(ceiling, Blocks.STONE.defaultBlockState());
+        InteractionResult result = player.getMainHandItem().getItem().useOn(context(player, ceiling, Direction.DOWN));
+        helper.assertTrue(result.consumesAction(), "The pylon must place against the ceiling");
+        BlockPos placed = ceiling.below();
+        helper.assertTrue(level.getBlockState(placed).is(expected), "Placement lands in the clicked cell");
         return placed;
     }
 
@@ -305,16 +322,23 @@ public class HardpointGameTests {
      */
     @GameTest(template = "empty", batch = "hardpoint_placement", timeoutTicks = 100)
     public static void hardpointBlockstateCoversEveryFacingAndNose(GameTestHelper helper) {
-        var stream =
-                HardpointGameTests.class.getResourceAsStream("/assets/cbc_more_content/blockstates/hardpoint.json");
-        helper.assertTrue(stream != null, "The hardpoint blockstate ships with the mod");
+        for (String blockstate : List.of("hardpoint", "double_hardpoint", "triple_hardpoint")) {
+            assertBlockstateCoversEveryFacingAndNose(helper, blockstate);
+        }
+        helper.succeed();
+    }
+
+    private static void assertBlockstateCoversEveryFacingAndNose(GameTestHelper helper, String blockstate) {
+        var stream = HardpointGameTests.class.getResourceAsStream(
+                "/assets/cbc_more_content/blockstates/" + blockstate + ".json");
+        helper.assertTrue(stream != null, "The " + blockstate + " blockstate ships with the mod");
         JsonObject variants;
         try (stream) {
             variants = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8))
                     .getAsJsonObject()
                     .getAsJsonObject("variants");
         } catch (IOException e) {
-            throw new UncheckedIOException("The hardpoint blockstate must be readable", e);
+            throw new UncheckedIOException("The " + blockstate + " blockstate must be readable", e);
         }
         helper.assertTrue(variants != null && !variants.isEmpty(), "The blockstate lists variants");
         List<String> keys = new ArrayList<>(variants.keySet());
@@ -325,8 +349,8 @@ public class HardpointGameTests {
                         keys.stream().filter(key -> variantMatches(key, state)).toList();
                 helper.assertTrue(
                         hits.size() == 1,
-                        "facing=" + facing + ",nose=" + nose + " must match exactly one variant, matched " + hits
-                                + " of " + keys);
+                        blockstate + ": facing=" + facing + ",nose=" + nose
+                                + " must match exactly one variant, matched " + hits + " of " + keys);
                 JsonObject variant = variants.getAsJsonObject(hits.getFirst());
                 int wantX = facing == Direction.DOWN ? 180 : facing.getAxis() == Direction.Axis.Y ? 0 : 90;
                 int wantY = facing.getAxis() == Direction.Axis.Y
@@ -346,11 +370,10 @@ public class HardpointGameTests {
                 int y = variant.has("y") ? variant.get("y").getAsInt() : 0;
                 helper.assertTrue(
                         x == wantX && y == wantY,
-                        hits.getFirst() + " must turn x=" + wantX + ",y=" + wantY + " so the clamp follows the"
-                                + " rounds, found x=" + x + ",y=" + y);
+                        blockstate + " " + hits.getFirst() + " must turn x=" + wantX + ",y=" + wantY
+                                + " so the clamp follows the rounds, found x=" + x + ",y=" + y);
             }
         }
-        helper.succeed();
     }
 
     /** Mirrors vanilla variant matching: every entry a key names must equal the state. */
@@ -604,6 +627,263 @@ public class HardpointGameTests {
         });
     }
 
+    @GameTest(template = "empty", batch = "hardpoint_rails", timeoutTicks = 120)
+    public static void doubleRailFiresEveryLoadedRoundOnOneSignal(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var placer = player(helper, new ItemStack(ModItems.DOUBLE_HARDPOINT.get()));
+        BlockPos pylon = placeRail(helper, placer, ModItems.DOUBLE_HARDPOINT.get(), ModBlocks.DOUBLE_HARDPOINT.get());
+        var fresh = (HardpointBlockEntity) level.getBlockEntity(pylon);
+        helper.assertTrue(fresh.slotCount() == 2, "The double rail has two slots, found " + fresh.slotCount());
+        helper.assertTrue(fresh.releaseAllAtOnce(), "A fresh rail fires everything at once");
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.SMALL_BOMB.get(), 2));
+        for (int round = 1; round <= 2; round++) {
+            var mount = level.getBlockState(pylon)
+                    .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(pylon));
+            helper.assertTrue(mount.consumesAction(), "Round " + round + " must mount on the double rail");
+        }
+        var loaded = (HardpointBlockEntity) level.getBlockEntity(pylon);
+        helper.assertTrue(loaded.payloadCount() == 2, "Both rails are loaded, found " + loaded.payloadCount());
+
+        BlockPos wire = pylon.east();
+        level.setBlockAndUpdate(wire, Blocks.REDSTONE_BLOCK.defaultBlockState());
+        helper.runAfterDelay(3, () -> {
+            var after = (HardpointBlockEntity) level.getBlockEntity(pylon);
+            helper.assertFalse(after.hasPayload(), "One signal empties both rails at once");
+            int dropped = level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8))
+                    .size();
+            helper.assertTrue(dropped == 2, "Both rounds are in the air, saw " + dropped);
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_rails", timeoutTicks = 160)
+    public static void tripleRailOnePerPulseSpendsOneRoundEach(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var placer = player(helper, new ItemStack(ModItems.TRIPLE_HARDPOINT.get()));
+        BlockPos pylon = placeRail(helper, placer, ModItems.TRIPLE_HARDPOINT.get(), ModBlocks.TRIPLE_HARDPOINT.get());
+        ((HardpointBlockEntity) level.getBlockEntity(pylon)).setReleaseAllAtOnce(false);
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.SMALL_BOMB.get(), 3));
+        for (int round = 1; round <= 3; round++) {
+            var mount = level.getBlockState(pylon)
+                    .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(pylon));
+            helper.assertTrue(mount.consumesAction(), "Round " + round + " must mount on the triple rail");
+        }
+        helper.assertTrue(
+                ((HardpointBlockEntity) level.getBlockEntity(pylon)).payloadCount() == 3, "All three rails are loaded");
+
+        BlockPos wire = pylon.east();
+        level.setBlockAndUpdate(wire, Blocks.REDSTONE_BLOCK.defaultBlockState());
+        helper.runAfterDelay(3, () -> {
+            var after = (HardpointBlockEntity) level.getBlockEntity(pylon);
+            helper.assertTrue(after.payloadCount() == 2, "One pulse spends one round, left " + after.payloadCount());
+            int dropped = level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8))
+                    .size();
+            helper.assertTrue(dropped == 1, "Exactly one round leaves on the pulse, saw " + dropped);
+            level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8))
+                    .forEach(Entity::discard);
+
+            level.removeBlock(wire, false);
+            helper.runAfterDelay(2, () -> {
+                level.setBlockAndUpdate(wire, Blocks.REDSTONE_BLOCK.defaultBlockState());
+                helper.runAfterDelay(3, () -> {
+                    var last = (HardpointBlockEntity) level.getBlockEntity(pylon);
+                    helper.assertTrue(
+                            last.payloadCount() == 1,
+                            "The next pulse spends the next round, left " + last.payloadCount());
+                    level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8))
+                            .forEach(Entity::discard);
+                    helper.succeed();
+                });
+            });
+        });
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_rails", timeoutTicks = 100)
+    public static void railsRefuseTheOrdnanceThatNeedsASingleRail(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var placer = player(helper, new ItemStack(ModItems.DOUBLE_HARDPOINT.get()));
+        BlockPos doubleRail =
+                placeRail(helper, placer, ModItems.DOUBLE_HARDPOINT.get(), ModBlocks.DOUBLE_HARDPOINT.get());
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.CRUISE_MISSILE.get()));
+        var refusedMissile = level.getBlockState(doubleRail)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(doubleRail));
+        helper.assertFalse(refusedMissile.consumesAction(), "The double rail cannot take a cruise missile");
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.LARGE_BOMB.get()));
+        var doubleLarge = level.getBlockState(doubleRail)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(doubleRail));
+        helper.assertFalse(doubleLarge.consumesAction(), "The double rail cannot take a large bomb");
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.MOAB.get()));
+        var doubleMoab = level.getBlockState(doubleRail)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(doubleRail));
+        helper.assertFalse(doubleMoab.consumesAction(), "The double rail cannot take a MOAB");
+        ((HardpointBlockEntity) level.getBlockEntity(doubleRail)).removePayloads();
+        level.removeBlock(doubleRail, false);
+
+        BlockPos tripleRail =
+                placeRail(helper, placer, ModItems.TRIPLE_HARDPOINT.get(), ModBlocks.TRIPLE_HARDPOINT.get());
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.LARGE_BOMB.get()));
+        var refusedLarge = level.getBlockState(tripleRail)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(tripleRail));
+        helper.assertFalse(refusedLarge.consumesAction(), "The triple rail cannot take a large bomb");
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.MOAB.get()));
+        var refusedMoab = level.getBlockState(tripleRail)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(tripleRail));
+        helper.assertFalse(refusedMoab.consumesAction(), "The triple rail cannot take a MOAB");
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.CRUISE_MISSILE.get()));
+        var refusedTripleMissile = level.getBlockState(tripleRail)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(tripleRail));
+        helper.assertFalse(refusedTripleMissile.consumesAction(), "The triple rail cannot take a cruise missile");
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.AIM9.get()));
+        var interceptor = level.getBlockState(tripleRail)
+                .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(tripleRail));
+        helper.assertTrue(interceptor.consumesAction(), "The triple rail still takes an interceptor");
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_rails", timeoutTicks = 100)
+    public static void railsStopThreePixelsShortOfTheSinglePylon(GameTestHelper helper) {
+        var level = helper.getLevel();
+        double third = 3.0 / 16.0;
+        var single = ModBlocks.HARDPOINT.get().defaultBlockState();
+        var rail = ModBlocks.DOUBLE_HARDPOINT.get().defaultBlockState();
+        var triple = ModBlocks.TRIPLE_HARDPOINT.get().defaultBlockState();
+
+        BlockPos hung = helper.absolutePos(new BlockPos(4, 6, 4));
+        BlockPos floor = hung.south();
+        BlockPos wall = floor.south();
+        level.setBlock(hung, single.setValue(HardpointBlock.FACING, Direction.DOWN), FLAGS);
+        level.setBlock(hung.east(), rail.setValue(HardpointBlock.FACING, Direction.DOWN), FLAGS);
+        level.setBlock(floor, triple.setValue(HardpointBlock.FACING, Direction.UP), FLAGS);
+        level.setBlock(floor.east(), single.setValue(HardpointBlock.FACING, Direction.UP), FLAGS);
+        level.setBlock(wall, rail.setValue(HardpointBlock.FACING, Direction.EAST), FLAGS);
+        level.setBlock(wall.east(), single.setValue(HardpointBlock.FACING, Direction.EAST), FLAGS);
+
+        double singleHang = level.getBlockState(hung)
+                .getShape(level, hung, CollisionContext.empty())
+                .bounds()
+                .minY;
+        double railHang = level.getBlockState(hung.east())
+                .getShape(level, hung.east(), CollisionContext.empty())
+                .bounds()
+                .minY;
+        helper.assertTrue(
+                Math.abs(railHang - (singleHang + third)) < 1.0e-9,
+                "A hanging rail stops three pixels short, single=" + singleHang + " rail=" + railHang);
+
+        double singleRise = level.getBlockState(floor.east())
+                .getShape(level, floor.east(), CollisionContext.empty())
+                .bounds()
+                .maxY;
+        double tripleRise = level.getBlockState(floor)
+                .getShape(level, floor, CollisionContext.empty())
+                .bounds()
+                .maxY;
+        helper.assertTrue(
+                Math.abs(tripleRise - (singleRise - third)) < 1.0e-9,
+                "A floor rail stops three pixels short, single=" + singleRise + " rail=" + tripleRise);
+
+        double singleReach = level.getBlockState(wall.east())
+                .getShape(level, wall.east(), CollisionContext.empty())
+                .bounds()
+                .maxX;
+        double railReach = level.getBlockState(wall)
+                .getShape(level, wall, CollisionContext.empty())
+                .bounds()
+                .maxX;
+        helper.assertTrue(
+                Math.abs(railReach - (singleReach - third)) < 1.0e-9,
+                "A wall rail stops three pixels short, single=" + singleReach + " rail=" + railReach);
+        helper.succeed();
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_rails", timeoutTicks = 120)
+    public static void everyHardpointDropIsInvisibleForItsFirstSecond(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var placer = player(helper, new ItemStack(ModItems.DOUBLE_HARDPOINT.get()));
+        BlockPos pylon = placeRail(helper, placer, ModItems.DOUBLE_HARDPOINT.get(), ModBlocks.DOUBLE_HARDPOINT.get());
+
+        placer.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(ModItems.SMALL_BOMB.get(), 2));
+        for (int round = 1; round <= 2; round++) {
+            var mount = level.getBlockState(pylon)
+                    .useItemOn(placer.getMainHandItem(), level, placer, InteractionHand.MAIN_HAND, hit(pylon));
+            helper.assertTrue(mount.consumesAction(), "Round " + round + " must mount on the double rail");
+        }
+
+        Entity[] dropped = new Entity[2];
+        BlockPos wire = pylon.east();
+        level.setBlockAndUpdate(wire, Blocks.REDSTONE_BLOCK.defaultBlockState());
+        helper.runAfterDelay(3, () -> {
+            var bombs = level.getEntitiesOfClass(DropBombProjectile.class, new AABB(pylon).inflate(8));
+            helper.assertTrue(bombs.size() == 2, "Both rounds are in the air, saw " + bombs.size());
+            for (int i = 0; i < bombs.size(); i++) {
+                Entity bomb = bombs.get(i);
+                helper.assertTrue(bomb.isInvisible(), "A freshly dropped round starts invisible");
+                // Park the rounds high and physics-free so the grace can be watched in open air.
+                bomb.noPhysics = true;
+                bomb.setDeltaMovement(Vec3.ZERO);
+                bomb.teleportTo(bomb.getX(), bomb.getY() + 30.0D, bomb.getZ());
+                dropped[i] = bomb;
+            }
+        });
+        helper.runAfterDelay(12, () -> {
+            for (Entity bomb : dropped) {
+                helper.assertTrue(bomb != null && bomb.isInvisible(), "The grace spans most of the first second");
+                bomb.setDeltaMovement(Vec3.ZERO);
+            }
+        });
+        helper.runAfterDelay(30, () -> {
+            for (Entity bomb : dropped) {
+                helper.assertTrue(bomb != null && !bomb.isRemoved(), "The dropped round survives its grace");
+                helper.assertFalse(bomb.isInvisible(), "The round is visible again after its second");
+            }
+            helper.succeed();
+        });
+    }
+
+    @GameTest(template = "empty", batch = "hardpoint_rails", timeoutTicks = 120)
+    public static void roundsInTheirGraceNeverCollideWithEachOther(GameTestHelper helper) {
+        var level = helper.getLevel();
+        Vec3 origin = helper.absolutePos(new BlockPos(8, 6, 8)).getCenter();
+
+        var first = ModEntityTypes.AIM9.get().create(level);
+        var second = ModEntityTypes.AIM9.get().create(level);
+        first.setPos(origin);
+        second.setPos(origin.add(0.1, 0.0, 0.0));
+        first.launch(null, Vec3.ZERO, new Vec3(0.0, 1.0, 0.0));
+        second.launch(null, Vec3.ZERO, new Vec3(0.0, 1.0, 0.0));
+        helper.assertTrue(level.addFreshEntity(first), "The first interceptor spawns");
+        helper.assertTrue(level.addFreshEntity(second), "The second interceptor spawns");
+        // What a double rail hands its release path: two rounds sharing one spot.
+        DropGraceVisibility.grant(first);
+        DropGraceVisibility.grant(second);
+
+        // Parked with no motion: no block clip can fire, so only an entity contact
+        // could end this early — exactly the salvo collision under test.
+        for (int tick = 0; tick < 10 && !first.isRemoved() && !second.isRemoved(); tick++) {
+            first.noPhysics = true;
+            second.noPhysics = true;
+            first.setDeltaMovement(Vec3.ZERO);
+            second.setDeltaMovement(Vec3.ZERO);
+            advance(first);
+            advance(second);
+        }
+        boolean firstSurvived = !first.isRemoved();
+        boolean secondSurvived = !second.isRemoved();
+        first.discard();
+        second.discard();
+        helper.assertTrue(firstSurvived, "The first round must not detonate on its salvo-mate");
+        helper.assertTrue(secondSurvived, "The second round must not detonate on its salvo-mate");
+        helper.succeed();
+    }
+
     @GameTest(template = "empty", batch = "hardpoint_fuel", timeoutTicks = 300)
     public static void unguidedReleasesFlyStraightForTheirFullFuel(GameTestHelper helper) {
         var level = helper.getLevel();
@@ -668,7 +948,9 @@ public class HardpointGameTests {
         var pylons = new ArrayList<BlockPos>();
         var origins = new ArrayList<BlockPos>();
         for (int i = 0; i < payloads.size(); i++) {
-            BlockPos at = helper.absolutePos(new BlockPos(30 + i * 16, 70, 40));
+            // 32 blocks apart, not 16: the interceptor's eastward test lane must be
+            // discarded before it can reach the neighbouring fixture's hull.
+            BlockPos at = helper.absolutePos(new BlockPos(30 + i * 32, 70, 40));
             origins.add(at);
             level.getChunkSource().addRegionTicket(fixture, new ChunkPos(at), 3, at.asLong());
             level.setBlock(at.west(), Blocks.STONE.defaultBlockState(), FLAGS);

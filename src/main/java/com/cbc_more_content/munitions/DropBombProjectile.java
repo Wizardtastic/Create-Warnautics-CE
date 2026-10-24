@@ -7,6 +7,7 @@ import com.cbc_more_content.effects.BombExplosionHandler;
 import com.cbc_more_content.effects.BombSympatheticDetonation;
 import com.cbc_more_content.registry.ModBlocks;
 import com.cbc_more_content.registry.ModEntityTypes;
+import com.cbc_more_content.util.DropGraceVisibility;
 import javax.annotation.Nonnull;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -160,6 +161,7 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
                 switch (this.bombSize()) {
                     case SMALL -> 0.18D;
                     case SEA -> 0.24D;
+                    case LARGE_SEA -> 0.30D;
                     case MEDIUM -> 0.42D;
                     case LARGE -> 0.62D;
                     case MOAB -> -0.45D;
@@ -318,7 +320,10 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
 
     @Override
     public boolean canHitEntity(Entity entity) {
-        return !(entity instanceof DropBombProjectile) && super.canHitEntity(entity);
+        // A round still clearing the rail must not detonate on its salvo-mates either.
+        return !(entity instanceof DropBombProjectile)
+                && !DropGraceVisibility.isInGrace(entity)
+                && super.canHitEntity(entity);
     }
 
     public void sympatheticDetonate() {
@@ -351,7 +356,7 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
     public BlockState getRenderedBlockState() {
         Block block = this.visualBlock();
         BlockState state = block.defaultBlockState().setValue(DropBombBlock.FACING, Direction.NORTH);
-        if (this.getType() == ModEntityTypes.SEA_BOMB.get()) {
+        if (this.getType() == ModEntityTypes.SEA_BOMB.get() || this.getType() == ModEntityTypes.LARGE_SEA_BOMB.get()) {
             state = state.setValue(DropBombBlock.POWERED, true).setValue(DropBombBlock.CASSETTE, 4);
         }
         return state;
@@ -361,6 +366,9 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
         EntityType<?> type = this.getType();
         if (type == ModEntityTypes.SEA_BOMB.get()) {
             return ModBlocks.SEA_BOMB.get();
+        }
+        if (type == ModEntityTypes.LARGE_SEA_BOMB.get()) {
+            return ModBlocks.LARGE_SEA_BOMB.get();
         }
         if (type == ModEntityTypes.MEDIUM_BOMB.get()) {
             return ModBlocks.MEDIUM_BOMB.get();
@@ -378,6 +386,9 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
         EntityType<?> type = this.getType();
         if (type == ModEntityTypes.SEA_BOMB.get()) {
             return BombSize.SEA;
+        }
+        if (type == ModEntityTypes.LARGE_SEA_BOMB.get()) {
+            return BombSize.LARGE_SEA;
         }
         if (type == ModEntityTypes.MEDIUM_BOMB.get()) {
             return BombSize.MEDIUM;

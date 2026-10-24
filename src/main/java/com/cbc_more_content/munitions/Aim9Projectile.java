@@ -4,6 +4,7 @@ import com.cbc_more_content.bomb.BombSize;
 import com.cbc_more_content.compat.SableDropCompat;
 import com.cbc_more_content.registry.ModSounds;
 import com.cbc_more_content.util.DropBombUtil;
+import com.cbc_more_content.util.DropGraceVisibility;
 import java.util.UUID;
 import javax.annotation.Nullable;
 import net.minecraft.core.particles.ParticleTypes;
@@ -249,7 +250,9 @@ public class Aim9Projectile extends Entity {
             }
         }
         for (Entity other : server.getEntities(
-                this, new AABB(from, to).inflate(3), e -> e.isAlive() && e.isPickable() && !e.isSpectator())) {
+                this,
+                new AABB(from, to).inflate(3),
+                e -> e.isAlive() && e.isPickable() && !e.isSpectator() && !DropGraceVisibility.isInGrace(e))) {
             Vec3 contact = MissileCollision.contact(this, other, from, to);
             if (contact != null && (stop == null || from.distanceToSqr(contact) < from.distanceToSqr(stop))) {
                 stop = contact;

@@ -24,6 +24,15 @@ public enum BombSize {
             0.55f,
             7.5f,
             12.0f),
+    LARGE_SEA(
+            Block.box(2.0D, 0.0D, 2.0D, 14.0D, 32.0D, 14.0D),
+            Block.box(2.0D, 2.0D, -8.0D, 14.0D, 14.0D, 24.0D),
+            Block.box(-8.0D, 2.0D, 2.0D, 24.0D, 14.0D, 14.0D),
+            0.30D,
+            0.08D,
+            0.90f,
+            1.65f,
+            36.0f),
     MEDIUM(
             Block.box(3.0D, 0.0D, 3.0D, 13.0D, 12.0D, 13.0D),
             Block.box(3.0D, 2.0D, 0.0D, 13.0D, 14.0D, 12.0D),
@@ -94,7 +103,7 @@ public enum BombSize {
     }
 
     public boolean isSeaBomb() {
-        return this == SEA;
+        return this == SEA || this == LARGE_SEA;
     }
 
     public int blockBudget() {

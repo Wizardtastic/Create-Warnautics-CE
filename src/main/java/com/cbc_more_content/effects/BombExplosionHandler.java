@@ -203,6 +203,7 @@ public final class BombExplosionHandler {
                 switch (size) {
                     case SMALL -> 180.0D * 180.0D;
                     case SEA -> 210.0D * 210.0D;
+                    case LARGE_SEA -> 300.0D * 300.0D;
                     case MEDIUM -> 260.0D * 260.0D;
                     case LARGE -> 360.0D * 360.0D;
                     case MOAB -> 540.0D * 540.0D;
@@ -234,6 +235,7 @@ public final class BombExplosionHandler {
                 switch (size) {
                     case SMALL -> 1.85f;
                     case SEA -> 2.85f;
+                    case LARGE_SEA -> 3.8f;
                     case MEDIUM -> 2.9f;
                     case LARGE -> 4.2f;
                     case MOAB -> 6.2f;

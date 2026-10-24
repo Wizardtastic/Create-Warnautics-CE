@@ -38,9 +38,12 @@ public final class ModBlockEntities {
                     .build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<HardpointBlockEntity>> HARDPOINT =
-            BLOCK_ENTITIES.register(
-                    "hardpoint", () -> BlockEntityType.Builder.of(HardpointBlockEntity::new, ModBlocks.HARDPOINT.get())
-                            .build(null));
+            BLOCK_ENTITIES.register("hardpoint", () -> BlockEntityType.Builder.of(
+                            HardpointBlockEntity::new,
+                            ModBlocks.HARDPOINT.get(),
+                            ModBlocks.DOUBLE_HARDPOINT.get(),
+                            ModBlocks.TRIPLE_HARDPOINT.get())
+                    .build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SeaMineBlockEntity>> SEA_MINE =
             BLOCK_ENTITIES.register(

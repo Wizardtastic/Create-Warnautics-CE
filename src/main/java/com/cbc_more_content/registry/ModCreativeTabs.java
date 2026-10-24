@@ -25,6 +25,7 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.LARGE_BOMB.get());
                         output.accept(ModItems.MOAB.get());
                         output.accept(ModItems.SEA_BOMB.get());
+                        output.accept(ModItems.LARGE_SEA_BOMB.get());
                         output.accept(ModItems.SMALL_MINE.get());
                         output.accept(ModItems.BOUNDING_MINE.get());
                         output.accept(ModItems.LARGE_MINE.get());
@@ -34,6 +35,8 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.CRUISE_MISSILE.get());
                         output.accept(ModItems.AIM9.get());
                         output.accept(ModItems.HARDPOINT.get());
+                        output.accept(ModItems.DOUBLE_HARDPOINT.get());
+                        output.accept(ModItems.TRIPLE_HARDPOINT.get());
                         output.accept(ModItems.TRIPWIRE_COIL.get());
                         output.accept(ModItems.CHAIN_COIL.get());
                         output.accept(ModItems.CHAIN_CONNECTOR.get());

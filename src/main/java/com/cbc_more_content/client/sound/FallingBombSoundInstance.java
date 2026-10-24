@@ -141,6 +141,7 @@ public final class FallingBombSoundInstance extends AbstractTickableSoundInstanc
         return switch (size) {
             case SMALL -> 145.0D;
             case SEA -> 170.0D;
+            case LARGE_SEA -> 290.0D;
             case MEDIUM -> 225.0D;
             case LARGE -> 290.0D;
             case MOAB -> 440.0D;
@@ -151,6 +152,7 @@ public final class FallingBombSoundInstance extends AbstractTickableSoundInstanc
         return switch (size) {
             case SMALL -> 0.38f;
             case SEA -> 0.46f;
+            case LARGE_SEA -> 0.75f;
             case MEDIUM -> 0.61f;
             case LARGE -> 0.78f;
             case MOAB -> 0.95f;
@@ -161,6 +163,7 @@ public final class FallingBombSoundInstance extends AbstractTickableSoundInstanc
         return switch (size) {
             case SMALL -> 1.08f;
             case SEA -> 1.0f;
+            case LARGE_SEA -> 0.82f;
             case MEDIUM -> 0.89f;
             case LARGE -> 0.78f;
             case MOAB -> 0.62f;

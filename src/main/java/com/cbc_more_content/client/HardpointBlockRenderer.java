@@ -23,6 +23,12 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBlockEntity> {
+    /** Rail spacing at full spread — the double's two rails, and the triple's outer pair. */
+    private static final double RAIL_SPACING = 8.0D / 16.0D;
+
+    /** The rails are cut three pixels shorter than the single pylon, so their rounds ride higher too. */
+    private static final double RAIL_LIFT = 3.0D / 16.0D;
+
     public HardpointBlockRenderer(BlockEntityRendererProvider.Context context) {}
 
     @Override
@@ -33,10 +39,40 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
             MultiBufferSource buffers,
             int packedLight,
             int packedOverlay) {
-        ItemStack payload = hardpoint.payload();
-        if (payload.isEmpty() || !(payload.getItem() instanceof BlockItem blockItem)) {
-            return;
+        BlockState mount = hardpoint.getBlockState();
+        int slots = mount.getBlock() instanceof HardpointBlock hardpointBlock ? hardpointBlock.slotCount() : 1;
+        // Outer rails keep their places and the middle one fills the gap, so a double
+        // and a triple line up on the same grid the models were cut for.
+        double step = slots > 1 ? RAIL_SPACING / (slots - 1) : 0.0D;
+        int count = Math.min(slots, hardpoint.payloads().size());
+        for (int slot = 0; slot < count; slot++) {
+            ItemStack payload = hardpoint.payloads().get(slot);
+            if (payload.isEmpty() || !(payload.getItem() instanceof BlockItem blockItem)) {
+                continue;
+            }
+            renderPayload(
+                    blockItem,
+                    payload,
+                    mount,
+                    (slot - (slots - 1) / 2.0D) * step,
+                    slots > 1 ? RAIL_LIFT : 0.0D,
+                    pose,
+                    buffers,
+                    packedLight,
+                    packedOverlay);
         }
+    }
+
+    private static void renderPayload(
+            BlockItem blockItem,
+            ItemStack payload,
+            BlockState mount,
+            double railOffset,
+            double lift,
+            PoseStack pose,
+            MultiBufferSource buffers,
+            int packedLight,
+            int packedOverlay) {
         Block block = blockItem.getBlock();
         BlockState state = block.defaultBlockState();
         if (state.hasProperty(BlockStateProperties.FACING)) {
@@ -53,11 +89,16 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
             state = state.setValue(
                     DropBombBlock.CASSETTE, DropBombBlock.clampCassette(DropBombItem.getCassette(payload)));
         }
-        BlockState mount = hardpoint.getBlockState();
         Direction facing = mount.getValue(HardpointBlock.FACING);
         Direction nose = mount.hasProperty(HardpointBlock.NOSE) ? mount.getValue(HardpointBlock.NOSE) : Direction.NORTH;
 
         pose.pushPose();
+        // The rails stop three pixels short of the single pylon's body, so the rounds ride up with them.
+        pose.translate(0.0D, lift, 0.0D);
+        // Rails sit beside each other across the firing line, never along it.
+        Direction lateral = (facing.getAxis() == Direction.Axis.Y ? nose : facing).getClockWise();
+        pose.translate(
+                lateral.getStepX() * railOffset, lateral.getStepY() * railOffset, lateral.getStepZ() * railOffset);
         MountShift shift = mountShiftFor(block);
         if (facing.getAxis() == Direction.Axis.Y) {
             pose.translate(nose.getStepX() * shift.forward(), -shift.down(), nose.getStepZ() * shift.forward());
@@ -119,6 +160,7 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
         if (block instanceof DropBombBlock bomb) {
             return switch (bomb.getBombSize()) {
                 case LARGE -> 0.5 + 3.0 / 16.0;
+                case LARGE_SEA -> 0.5 + 3.0 / 16.0;
                 case MOAB -> 0.5 + 16.0 / 16.0;
                 default -> 0.5;
             };
@@ -140,6 +182,7 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
                 case SMALL -> new MountShift(3.0D / 16.0D, 4.0D / 16.0D);
                 case MEDIUM -> new MountShift(4.0D / 16.0D, 6.0D / 16.0D);
                 case LARGE -> new MountShift(5.0D / 16.0D, 5.0D / 16.0D);
+                case LARGE_SEA -> new MountShift(5.0D / 16.0D, 5.0D / 16.0D);
                 case MOAB -> new MountShift(3.0D / 16.0D, 15.0D / 16.0D);
                 default -> MountShift.NONE;
             };
@@ -162,6 +205,7 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
             return switch (bomb.getBombSize()) {
                 case MEDIUM -> 0.34;
                 case LARGE -> 0.375625;
+                case LARGE_SEA -> 0.375625;
                 case SEA -> 0.375;
                 case MOAB -> 0.815625;
                 default -> 0.278125;

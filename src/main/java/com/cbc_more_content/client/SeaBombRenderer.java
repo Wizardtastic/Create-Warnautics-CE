@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import rbasamoyai.createbigcannons.munitions.big_cannon.BigCannonProjectileRenderer;
@@ -20,8 +21,15 @@ import rbasamoyai.createbigcannons.utils.CBCUtils;
  * red texture, translucent ghost, or second propeller is created.
  */
 public class SeaBombRenderer extends BigCannonProjectileRenderer<SeaBombProjectile> {
+    private final Block rotorBlock;
+
     public SeaBombRenderer(EntityRendererProvider.Context context) {
+        this(context, ModBlocks.SEA_BOMB.get());
+    }
+
+    public SeaBombRenderer(EntityRendererProvider.Context context, Block rotorBlock) {
         super(context);
+        this.rotorBlock = rotorBlock;
     }
 
     @Override
@@ -57,8 +65,7 @@ public class SeaBombRenderer extends BigCannonProjectileRenderer<SeaBombProjecti
         poseStack.mulPose(Axis.ZP.rotationDegrees(spin));
         poseStack.translate(-0.5D, -0.5D, -0.5D);
 
-        BlockState rotor = ModBlocks.SEA_BOMB
-                .get()
+        BlockState rotor = this.rotorBlock
                 .defaultBlockState()
                 .setValue(DropBombBlock.FACING, Direction.NORTH)
                 .setValue(DropBombBlock.POWERED, true)

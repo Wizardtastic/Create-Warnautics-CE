@@ -34,6 +34,7 @@ public final class ModCreativeTabs {
                         output.accept(ModItems.CRUISE_MISSILE.get());
                         output.accept(ModItems.AIM9.get());
                         output.accept(ModItems.HARDPOINT.get());
+                        output.accept(ModItems.MISSILE_LAUNCHPAD.get());
                         output.accept(ModItems.TRIPWIRE_COIL.get());
                         output.accept(ModItems.CHAIN_COIL.get());
                         output.accept(ModItems.CHAIN_CONNECTOR.get());

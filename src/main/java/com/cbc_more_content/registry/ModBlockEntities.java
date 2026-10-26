@@ -5,6 +5,7 @@ import com.cbc_more_content.block.Aim9BlockEntity;
 import com.cbc_more_content.block.C4BlockEntity;
 import com.cbc_more_content.block.CruiseMissileBlockEntity;
 import com.cbc_more_content.block.HardpointBlockEntity;
+import com.cbc_more_content.block.MissileLaunchpadBlockEntity;
 import com.cbc_more_content.block.SeaMineBlockEntity;
 import com.cbc_more_content.block.SirenBlockEntity;
 import dev.simulated_team.simulated.content.blocks.rope.rope_connector.RopeConnectorBlockEntity;
@@ -41,6 +42,11 @@ public final class ModBlockEntities {
             BLOCK_ENTITIES.register(
                     "hardpoint", () -> BlockEntityType.Builder.of(HardpointBlockEntity::new, ModBlocks.HARDPOINT.get())
                             .build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<MissileLaunchpadBlockEntity>>
+            MISSILE_LAUNCHPAD = BLOCK_ENTITIES.register("missile_launchpad", () -> BlockEntityType.Builder.of(
+                    MissileLaunchpadBlockEntity::new, ModBlocks.MISSILE_LAUNCHPAD.get())
+            .build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SeaMineBlockEntity>> SEA_MINE =
             BLOCK_ENTITIES.register(

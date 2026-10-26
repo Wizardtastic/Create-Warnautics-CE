@@ -13,6 +13,7 @@ import com.cbc_more_content.radar.InterceptSettingsStore;
 import com.cbc_more_content.registry.ModSounds;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -57,6 +58,16 @@ public class CruiseMissileProjectile extends Entity {
     private static final double EJECT_GRAVITY = 0.03D;
     public static final int DROP_TICKS = 4;
 
+    public static final int IGNITION_TICKS = 5;
+
+    private static final double LIFT_SPEED = 1.75D;
+
+    private static final double LIFT_ACCEL = 0.36D;
+
+    private static final double LIFT_CLEARANCE = 10.0D;
+
+    private static final int LIFT_LIMIT_TICKS = 40;
+
     private static final double DROP_SPEED = 0.6D;
 
     private static final double TURN_RATE = 0.095D;
@@ -91,6 +102,11 @@ public class CruiseMissileProjectile extends Entity {
     private Vec3 lastAimDrift;
 
     private int ejecting;
+    private int igniting;
+    private boolean padLaunch;
+    private int liftTicks;
+    private Vec3 padUp = new Vec3(0.0D, 1.0D, 0.0D);
+    private Vec3 padOrigin = Vec3.ZERO;
     private Vec3 carrierVelocity = Vec3.ZERO;
     private Vec3 blastDrift = Vec3.ZERO;
 
@@ -175,6 +191,32 @@ public class CruiseMissileProjectile extends Entity {
         this.eject(new Vec3(0, 1, 0), Vec3.ZERO);
     }
 
+    public void igniteOnPad(Vec3 up, Vec3 carrierVelocity) {
+        Vec3 dir = up.lengthSqr() < 1.0E-6D ? new Vec3(0.0D, 1.0D, 0.0D) : up.normalize();
+        this.carrierVelocity = carrierVelocity;
+        this.padLaunch = true;
+        this.padUp = dir;
+        this.padOrigin = this.position();
+        this.liftTicks = 0;
+        this.igniting = IGNITION_TICKS;
+        this.entityData.set(POWERED, false);
+        this.entityData.set(EJECTING, false);
+        this.setDeltaMovement(Vec3.ZERO);
+        this.faceMotion(dir);
+        this.yRotO = this.getYRot();
+        this.xRotO = this.getXRot();
+        this.level()
+                .playSound(
+                        null,
+                        this.getX(),
+                        this.getY(),
+                        this.getZ(),
+                        ModSounds.CRUISE_MISSILE_ENGINE.get(),
+                        SoundSource.HOSTILE,
+                        1.8f,
+                        0.55f);
+    }
+
     public void eject(Vec3 heading, Vec3 carrierVelocity) {
         this.carrierVelocity = carrierVelocity;
         this.ejecting = EJECT_TICKS;
@@ -224,6 +266,14 @@ public class CruiseMissileProjectile extends Entity {
         }
 
         this.refreshChunkTickets();
+        if (this.igniting > 0) {
+            this.spoolUp();
+            return;
+        }
+        if (this.padLaunch) {
+            this.liftOffRail();
+            return;
+        }
         if (this.ejecting > 0) {
             this.coastOutOfRack();
             return;
@@ -306,6 +356,91 @@ public class CruiseMissileProjectile extends Entity {
         this.setPos(to);
         this.faceMotion(motion);
         this.fuseOnTarget(from, aim);
+    }
+
+    private void spoolUp() {
+        this.igniting--;
+        // The deck carries the round while it waits, exactly as the hull carries the pad.
+        this.setDeltaMovement(this.carrierVelocity);
+        if (this.carrierVelocity.lengthSqr() > 1.0E-6D) {
+            this.setPos(this.position().add(this.carrierVelocity));
+        }
+        this.exhaustSmoke(1.0D + (IGNITION_TICKS - this.igniting) * 0.6D);
+        if (this.igniting > 0) {
+            return;
+        }
+        this.level()
+                .playSound(
+                        null,
+                        this.getX(),
+                        this.getY(),
+                        this.getZ(),
+                        ModSounds.CRUISE_MISSILE_LAUNCH.get(),
+                        SoundSource.HOSTILE,
+                        4.0f,
+                        0.95f);
+        // No coasting: the first boost step goes down on the tick the rail lets go.
+        Vec3 motion = this.padUp.scale(LIFT_ACCEL).add(this.carrierVelocity);
+        this.setDeltaMovement(motion);
+        this.setPos(this.position().add(motion));
+    }
+
+    private void liftOffRail() {
+        this.liftTicks++;
+        Vec3 rise = this.getDeltaMovement().subtract(this.carrierVelocity).add(this.padUp.scale(LIFT_ACCEL));
+        if (rise.length() > LIFT_SPEED) {
+            rise = rise.normalize().scale(LIFT_SPEED);
+        }
+        Vec3 motion = rise.add(this.carrierVelocity);
+        this.setDeltaMovement(motion);
+
+        Vec3 from = this.position();
+        Vec3 to = from.add(motion);
+        if (this.tickCount > ARMING_TICKS && this.checkImpact(from, to)) {
+            return;
+        }
+        this.setPos(to);
+        this.faceMotion(this.padUp);
+        this.yRotO = this.getYRot();
+        this.xRotO = this.getXRot();
+        if (this.tickCount % 2 == 0) {
+            this.exhaustSmoke(2.4D);
+        }
+
+        if (to.subtract(this.padOrigin).dot(this.padUp) < LIFT_CLEARANCE && this.liftTicks < LIFT_LIMIT_TICKS) {
+            return;
+        }
+        this.padLaunch = false;
+        this.entityData.set(POWERED, true);
+        this.setDeltaMovement(this.padUp.scale(this.speedFor(null)).add(this.carrierVelocity));
+    }
+
+    private void exhaustSmoke(double strength) {
+        if (!(this.level() instanceof ServerLevel server)) {
+            return;
+        }
+        Vec3 tail = this.position().subtract(this.padUp.scale(1.35D));
+        double spread = 0.1D + strength * 0.06D;
+        server.sendParticles(
+                ParticleTypes.CAMPFIRE_COSY_SMOKE,
+                tail.x,
+                tail.y,
+                tail.z,
+                (int) Math.ceil(strength * 2.0D),
+                spread,
+                0.08D,
+                spread,
+                0.02D);
+        server.sendParticles(
+                ParticleTypes.FLAME,
+                tail.x,
+                tail.y,
+                tail.z,
+                (int) Math.ceil(strength * 3.0D),
+                spread * 0.6D,
+                0.06D,
+                spread * 0.6D,
+                0.01D);
     }
 
     private void coastOutOfRack() {
@@ -463,18 +598,18 @@ public class CruiseMissileProjectile extends Entity {
         this.trackingHull = false;
         if (this.targetEntityId != null) {
             Entity hunted = this.level() instanceof ServerLevel server ? server.getEntity(this.targetEntityId) : null;
-            if (hunted == null || !hunted.isAlive()) {
-                return null;
+            if (hunted != null && hunted.isAlive()) {
+                return this.dispersedAim(hunted.position(), 1.8);
             }
-            return this.dispersedAim(hunted.position(), 1.8);
+            // The quarry is gone; a launch point still on file is better than flying on blind.
+            this.targetEntityId = null;
         }
         if (this.targeting.guidance() == Guidance.INTERCEPT) {
             Vec3 tracked = this.radarAim();
-            if (tracked == null) {
-                return null;
+            if (tracked != null) {
+                this.trackingHull = this.contactIsHull;
+                return this.dispersedAim(tracked, this.contactIsHull ? .6 : 1.8);
             }
-            this.trackingHull = this.contactIsHull;
-            return this.dispersedAim(tracked, this.contactIsHull ? .6 : 1.8);
         }
         if (this.targeting.guidance() == Guidance.LOCK
                 && this.targeting.lockedSubLevel() >= 0
@@ -512,6 +647,9 @@ public class CruiseMissileProjectile extends Entity {
             if (held != null) {
                 this.contactIsHull = held.hull();
                 return held.position();
+            }
+            if (this.targeting.target() != null) {
+                return null;
             }
             this.targeting.setContact(null);
         }
@@ -710,6 +848,15 @@ public class CruiseMissileProjectile extends Entity {
         this.ejecting = Math.clamp(tag.getInt("Ejecting"), 0, EJECT_TICKS);
         this.entityData.set(EJECTING, this.ejecting > 0);
         this.dropped = tag.getBoolean("Dropped");
+        this.igniting = Math.clamp(tag.getInt("Igniting"), 0, IGNITION_TICKS);
+        this.padLaunch = tag.getBoolean("PadLaunch");
+        this.liftTicks = tag.getInt("LiftTicks");
+        this.padUp = new Vec3(tag.getDouble("PadUpX"), tag.getDouble("PadUpY"), tag.getDouble("PadUpZ"));
+        if (this.padUp.lengthSqr() < 1.0E-6D) {
+            this.padUp = new Vec3(0.0D, 1.0D, 0.0D);
+        }
+        this.padOrigin =
+                new Vec3(tag.getDouble("PadOriginX"), tag.getDouble("PadOriginY"), tag.getDouble("PadOriginZ"));
         this.carrierVelocity =
                 new Vec3(tag.getDouble("CarrierX"), tag.getDouble("CarrierY"), tag.getDouble("CarrierZ"));
         this.blastDrift =
@@ -732,6 +879,15 @@ public class CruiseMissileProjectile extends Entity {
         tag.putBoolean("WaterEntered", this.waterEntered);
         tag.putInt("Ejecting", this.ejecting);
         tag.putBoolean("Dropped", this.dropped);
+        tag.putInt("Igniting", this.igniting);
+        tag.putBoolean("PadLaunch", this.padLaunch);
+        tag.putInt("LiftTicks", this.liftTicks);
+        tag.putDouble("PadUpX", this.padUp.x);
+        tag.putDouble("PadUpY", this.padUp.y);
+        tag.putDouble("PadUpZ", this.padUp.z);
+        tag.putDouble("PadOriginX", this.padOrigin.x);
+        tag.putDouble("PadOriginY", this.padOrigin.y);
+        tag.putDouble("PadOriginZ", this.padOrigin.z);
         tag.putDouble("CarrierX", this.carrierVelocity.x);
         tag.putDouble("CarrierY", this.carrierVelocity.y);
         tag.putDouble("CarrierZ", this.carrierVelocity.z);

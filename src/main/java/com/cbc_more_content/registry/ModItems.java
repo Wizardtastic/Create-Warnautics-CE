@@ -9,6 +9,7 @@ import com.cbc_more_content.item.CruiseMissileItem;
 import com.cbc_more_content.item.DetonatorItem;
 import com.cbc_more_content.item.DropBombItem;
 import com.cbc_more_content.item.HardpointItem;
+import com.cbc_more_content.item.MissileLaunchpadItem;
 import com.cbc_more_content.item.SeaMineItem;
 import com.cbc_more_content.item.TripwireCoilItem;
 import com.cbc_more_content.item.WireCuttersItem;
@@ -79,6 +80,10 @@ public final class ModItems {
 
     public static final DeferredItem<HardpointItem> HARDPOINT =
             ITEMS.register("hardpoint", () -> new HardpointItem(ModBlocks.HARDPOINT.get(), new Item.Properties()));
+
+    public static final DeferredItem<MissileLaunchpadItem> MISSILE_LAUNCHPAD = ITEMS.register(
+            "missile_launchpad",
+            () -> new MissileLaunchpadItem(ModBlocks.MISSILE_LAUNCHPAD.get(), new Item.Properties()));
 
     public static final DeferredItem<Item> MUSIC_DISC_BREAKER_OF_SKIES = ITEMS.register(
             "music_disc_breaker_of_skies",

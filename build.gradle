@@ -27,6 +27,11 @@ repositories {
     maven { url = "https://maven.neoforged.net/releases/" }
     maven { url = "https://maven.ryanhcode.dev/releases" } // Sable
     maven { url = "https://maven.blamejared.com" } // Veil (Sable transitive)
+    maven {
+        name = "SquidDev"
+        url = "https://maven.squiddev.cc"
+        content { includeGroup "cc.tweaked" }
+    } // CC: Tweaked API (optional launchpad peripheral)
 
     exclusiveContent {
         forRepository {
@@ -119,6 +124,10 @@ dependencies {
     // Create Big Cannons + RPL (Modrinth artifacts; GitHub Packages needs auth)
     implementation("maven.modrinth:create-big-cannons:${cbc_modrinth_version}")
     implementation("maven.modrinth:rpl:${rpl_modrinth_version}")
+
+    // CC: Tweaked (optional — launchpad controlled as a computer peripheral)
+    compileOnly("cc.tweaked:cc-tweaked-1.21.1-core-api:1.120.2") { transitive = false }
+    compileOnly("cc.tweaked:cc-tweaked-1.21.1-forge-api:1.120.2") { transitive = false }
 }
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {

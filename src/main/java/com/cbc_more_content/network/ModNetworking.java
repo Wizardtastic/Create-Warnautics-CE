@@ -4,6 +4,8 @@ import com.cbc_more_content.block.Aim9BlockEntity;
 import com.cbc_more_content.block.C4BlockEntity;
 import com.cbc_more_content.block.DropBombBlock;
 import com.cbc_more_content.block.HardpointBlockEntity;
+import com.cbc_more_content.block.MissileLaunchpadBlock;
+import com.cbc_more_content.block.MissileLaunchpadBlockEntity;
 import com.cbc_more_content.block.SirenBlockEntity;
 import com.cbc_more_content.command.WarnauticsCommands;
 import com.cbc_more_content.compat.RadarCompat;
@@ -33,7 +35,7 @@ public final class ModNetworking {
     private ModNetworking() {}
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        event.registrar("4")
+        event.registrar("5")
                 .playToServer(
                         Aim9SettingsPayload.TYPE, Aim9SettingsPayload.STREAM_CODEC, ModNetworking::handleAim9Settings)
                 .playToClient(BombFlashPayload.TYPE, BombFlashPayload.STREAM_CODEC, ModNetworking::handleClient)
@@ -69,7 +71,43 @@ public final class ModNetworking {
                         OpenControlPanelPayload.STREAM_CODEC,
                         ModNetworking::handleOpenControlPanel)
                 .playToServer(
-                        ControlPanelPayload.TYPE, ControlPanelPayload.STREAM_CODEC, ModNetworking::handleControlPanel);
+                        ControlPanelPayload.TYPE, ControlPanelPayload.STREAM_CODEC, ModNetworking::handleControlPanel)
+                .playToServer(
+                        LaunchpadSettingsPayload.TYPE,
+                        LaunchpadSettingsPayload.STREAM_CODEC,
+                        ModNetworking::handleLaunchpadSettings);
+    }
+
+    private static void handleLaunchpadSettings(LaunchpadSettingsPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player) || !(player.level() instanceof ServerLevel level)) {
+                return;
+            }
+            BlockPos pos = payload.pos();
+            if (!canAccess(player, pos) || !holdsSettingsKey(player)) {
+                return;
+            }
+            if (!(level.getBlockEntity(pos) instanceof MissileLaunchpadBlockEntity pad)) {
+                return;
+            }
+            pad.setMode(MissileLaunchpadBlockEntity.Mode.byId(payload.mode()));
+            pad.setTarget(new BlockPos(payload.targetX(), payload.targetY(), payload.targetZ()));
+            pad.setAutoFire(payload.autoFire());
+            level.playSound(null, pos, SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.BLOCKS, 0.7f, 1.3f);
+            if (!payload.fire()) {
+                return;
+            }
+            switch (MissileLaunchpadBlock.launch(level, pos, level.getBlockState(pos))) {
+                case LAUNCHED -> {}
+                case EMPTY -> say(player, "message.cbc_more_content.launchpad.no_missile", ChatFormatting.RED);
+                case NO_RADAR -> say(player, "message.cbc_more_content.launchpad.no_radar", ChatFormatting.RED);
+                case NO_TARGET -> say(player, "message.cbc_more_content.launchpad.no_target", ChatFormatting.RED);
+            }
+        });
+    }
+
+    private static void say(Player player, String key, ChatFormatting colour) {
+        player.displayClientMessage(Component.translatable(key).withStyle(colour), true);
     }
 
     private static void handleConcussion(ConcussionPayload payload, IPayloadContext context) {

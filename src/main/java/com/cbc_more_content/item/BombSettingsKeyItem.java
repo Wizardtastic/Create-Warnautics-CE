@@ -7,6 +7,7 @@ import com.cbc_more_content.block.CruiseMissileBlockEntity;
 import com.cbc_more_content.block.DropBombBlock;
 import com.cbc_more_content.block.HardpointBlock;
 import com.cbc_more_content.block.HardpointBlockEntity;
+import com.cbc_more_content.block.MissileLaunchpadBlock;
 import com.cbc_more_content.block.SirenBlock;
 import com.cbc_more_content.compat.RadarCompat;
 import com.cbc_more_content.network.OpenRadarSettingsPayload;
@@ -109,6 +110,14 @@ public class BombSettingsKeyItem extends Item {
             }
             return InteractionResult.sidedSuccess(level.isClientSide);
         }
+        if (state.getBlock() instanceof MissileLaunchpadBlock) {
+            if (level.isClientSide) {
+                openLaunchpadScreen(pos);
+            } else {
+                level.playSound(null, pos, SoundEvents.ITEM_FRAME_ROTATE_ITEM, SoundSource.BLOCKS, 0.5f, 1.4f);
+            }
+            return InteractionResult.sidedSuccess(level.isClientSide);
+        }
         if (state.getBlock() instanceof HardpointBlock) {
             if (level.getBlockEntity(pos) instanceof HardpointBlockEntity be) {
                 openBundleDial(level, pos, be);
@@ -191,6 +200,11 @@ public class BombSettingsKeyItem extends Item {
                 storedDelay,
                 cassette,
                 allowAllAtOnce);
+    }
+
+    private static void openLaunchpadScreen(BlockPos pos) {
+        ReflectiveDispatcher.invoke(
+                "com.cbc_more_content.client.gui.MissileLaunchpadClient", "open", new Class<?>[] {BlockPos.class}, pos);
     }
 
     private static void openSirenScreen(BlockPos pos) {

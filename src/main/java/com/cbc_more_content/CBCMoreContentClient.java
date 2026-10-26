@@ -12,6 +12,7 @@ import com.cbc_more_content.client.ClientSetup;
 import com.cbc_more_content.client.CruiseMissileBlockRenderer;
 import com.cbc_more_content.client.CruiseMissileRenderer;
 import com.cbc_more_content.client.HardpointBlockRenderer;
+import com.cbc_more_content.client.MissileLaunchpadBlockRenderer;
 import com.cbc_more_content.client.MoabRenderer;
 import com.cbc_more_content.client.SeaBombRenderer;
 import com.cbc_more_content.client.SirenRenderer;
@@ -137,5 +138,6 @@ public class CBCMoreContentClient {
         event.registerBlockEntityRenderer(ModBlockEntities.SIREN.get(), SirenRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.CRUISE_MISSILE.get(), CruiseMissileBlockRenderer::new);
         event.registerBlockEntityRenderer(ModBlockEntities.HARDPOINT.get(), HardpointBlockRenderer::new);
+        event.registerBlockEntityRenderer(ModBlockEntities.MISSILE_LAUNCHPAD.get(), MissileLaunchpadBlockRenderer::new);
     }
 }

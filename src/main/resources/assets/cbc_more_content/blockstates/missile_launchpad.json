@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=south": {
+      "model": "cbc_more_content:block/missile_launchpad"
+    },
+    "facing=west": {
+      "model": "cbc_more_content:block/missile_launchpad",
+      "y": 90
+    },
+    "facing=north": {
+      "model": "cbc_more_content:block/missile_launchpad",
+      "y": 180
+    },
+    "facing=east": {
+      "model": "cbc_more_content:block/missile_launchpad",
+      "y": 270
+    }
+  }
+}

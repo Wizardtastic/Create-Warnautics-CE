@@ -8,6 +8,7 @@ import com.cbc_more_content.block.CruiseMissileBlock;
 import com.cbc_more_content.block.DropBombBlock;
 import com.cbc_more_content.block.HardpointBlock;
 import com.cbc_more_content.block.LandMineBlock;
+import com.cbc_more_content.block.MissileLaunchpadBlock;
 import com.cbc_more_content.block.MoabBlock;
 import com.cbc_more_content.block.SeaMineBlock;
 import com.cbc_more_content.block.SirenBlock;
@@ -71,6 +72,9 @@ public final class ModBlocks {
 
     public static final DeferredBlock<HardpointBlock> HARDPOINT =
             BLOCKS.register("hardpoint", () -> new HardpointBlock(bombProps(MapColor.METAL, 1.5f)));
+
+    public static final DeferredBlock<MissileLaunchpadBlock> MISSILE_LAUNCHPAD =
+            BLOCKS.register("missile_launchpad", () -> new MissileLaunchpadBlock(bombProps(MapColor.METAL, 1.5f)));
 
     public static final DeferredBlock<C4Block> C4 = BLOCKS.register(
             "c4",

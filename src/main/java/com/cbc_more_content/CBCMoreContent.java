@@ -21,6 +21,7 @@ import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import org.slf4j.Logger;
 
 @Mod(CBCMoreContent.MOD_ID)
@@ -44,10 +45,21 @@ public class CBCMoreContent {
 
         modEventBus.addListener(this::commonSetup);
         modEventBus.addListener(ModNetworking::register);
+        modEventBus.addListener(CBCMoreContent::registerCompatCapabilities);
 
         if (ModList.get().isLoaded("sable")) {
             ReflectiveDispatcher.invoke(
                     "com.cbc_more_content.compat.sable.SableCollisionDetonationQueue", "register", new Class<?>[0]);
+        }
+    }
+
+    private static void registerCompatCapabilities(RegisterCapabilitiesEvent event) {
+        if (ModList.get().isLoaded("computercraft")) {
+            ReflectiveDispatcher.invoke(
+                    "com.cbc_more_content.compat.computercraft.ComputerCraftCompat",
+                    "registerCapabilities",
+                    new Class<?>[] {RegisterCapabilitiesEvent.class},
+                    event);
         }
     }
 
@@ -59,7 +71,6 @@ public class CBCMoreContent {
                 ReflectiveDispatcher.invoke(
                         "com.cbc_more_content.compat.simulated.AirframeAssembly", "register", new Class<?>[0]);
             }
-            // Pay the class-loading cost here rather than inside the first detonation.
             Warmup.common();
         });
         LOGGER.info("Create Warnautics loaded — drop bombs with CBC ballistics + optional Sable kick");

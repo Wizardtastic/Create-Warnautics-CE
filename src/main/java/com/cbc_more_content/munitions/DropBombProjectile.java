@@ -320,7 +320,6 @@ public class DropBombProjectile extends FuzedBigCannonProjectile {
 
     @Override
     public boolean canHitEntity(Entity entity) {
-        // A round still clearing the rail must not detonate on its salvo-mates either.
         return !(entity instanceof DropBombProjectile)
                 && !DropGraceVisibility.isInGrace(entity)
                 && super.canHitEntity(entity);

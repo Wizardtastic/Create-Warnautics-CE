@@ -7,7 +7,6 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
-/** Chosen on the multi-rail hardpoint's choice screen: fire everything at once, or one per pulse. */
 public record HardpointModePayload(BlockPos pos, boolean fireAllAtOnce) implements CustomPacketPayload {
 
     public static final Type<HardpointModePayload> TYPE =

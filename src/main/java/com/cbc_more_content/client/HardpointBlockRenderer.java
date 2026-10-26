@@ -23,7 +23,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
 public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBlockEntity> {
-    /** The rails are cut three pixels shorter than the single pylon, so their rounds ride higher too. */
     private static final double RAIL_LIFT = 3.0D / 16.0D;
 
     public HardpointBlockRenderer(BlockEntityRendererProvider.Context context) {}
@@ -38,8 +37,6 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
             int packedOverlay) {
         BlockState mount = hardpoint.getBlockState();
         int slots = mount.getBlock() instanceof HardpointBlock hardpointBlock ? hardpointBlock.slotCount() : 1;
-        // Outer rails keep their places and the middle one fills the gap, so a double
-        // and a triple line up on the same grid the models were cut for.
         int count = Math.min(slots, hardpoint.payloads().size());
         for (int slot = 0; slot < count; slot++) {
             ItemStack payload = hardpoint.payloads().get(slot);
@@ -89,9 +86,7 @@ public class HardpointBlockRenderer implements BlockEntityRenderer<HardpointBloc
         Direction nose = mount.hasProperty(HardpointBlock.NOSE) ? mount.getValue(HardpointBlock.NOSE) : Direction.NORTH;
 
         pose.pushPose();
-        // The rails stop three pixels short of the single pylon's body, so the rounds ride up with them.
         pose.translate(0.0D, lift, 0.0D);
-        // Rails sit beside each other across the firing line, never along it.
         Direction lateral = HardpointBlock.lateral(mount);
         pose.translate(
                 lateral.getStepX() * railOffset, lateral.getStepY() * railOffset, lateral.getStepZ() * railOffset);

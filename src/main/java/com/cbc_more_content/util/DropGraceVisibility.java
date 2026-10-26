@@ -15,30 +15,16 @@ import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
 import net.neoforged.neoforge.event.tick.LevelTickEvent;
 
-/**
- * Freshly released ordnance spends its first second invisible.
- * <p>
- * A salvo off a double or triple rail puts several rounds in the air a fraction of a
- * block apart; without this grace they can catch each other in their own blast before
- * they have cleared the pylon. Invisibility is synced with the flag itself, so clients
- * see the same fade the server counts.
- * <p>
- * The remaining time lives in the entity's persistent data, not only in memory: a round
- * that saves, unloads or relogs mid-grace comes back invisible and the counter resumes
- * when it rejoins, so it can never be stranded out of sight.
- */
 @EventBusSubscriber(modid = CBCMoreContent.MOD_ID)
 public final class DropGraceVisibility {
     private static final String REMAINING_KEY = "WarnauticsDropGraceTicks";
 
-    /** One second — long enough for a salvo to clear the rails, short enough to watch the fall. */
     public static final int GRACE_TICKS = 20;
 
     private static final Map<ServerLevel, List<UUID>> ACTIVE = new HashMap<>();
 
     private DropGraceVisibility() {}
 
-    /** Starts the grace on a just-released round. Safe to call on either side of a launch. */
     public static void grant(Entity entity) {
         if (!(entity.level() instanceof ServerLevel level)) {
             return;
@@ -51,11 +37,6 @@ public final class DropGraceVisibility {
         }
     }
 
-    /**
-     * True while a round is still inside its post-release grace. Contact sweeps check
-     * this so freshly dropped ordnance cannot detonate on its own salvo, which is
-     * invisible or not.
-     */
     public static boolean isInGrace(Entity entity) {
         return entity.getPersistentData().getInt(REMAINING_KEY) > 0;
     }
@@ -72,7 +53,6 @@ public final class DropGraceVisibility {
         pending.removeIf(uuid -> {
             Entity entity = level.getEntity(uuid);
             if (entity == null || entity.isRemoved()) {
-                // Unloaded: its persistent counter picks the grace up again on rejoin.
                 return true;
             }
             CompoundTag data = entity.getPersistentData();
@@ -90,7 +70,6 @@ public final class DropGraceVisibility {
         }
     }
 
-    /** A round that saved mid-grace comes back invisible; pick its counter up again. */
     @SubscribeEvent
     public static void onJoinLevel(EntityJoinLevelEvent event) {
         if (event.getLevel() instanceof ServerLevel level

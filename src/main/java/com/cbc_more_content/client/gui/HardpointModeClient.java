@@ -5,7 +5,6 @@ import net.minecraft.core.BlockPos;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.api.distmarker.OnlyIn;
 
-/** Client-only entry point for {@link HardpointModeScreen}. */
 @OnlyIn(Dist.CLIENT)
 public final class HardpointModeClient {
     private HardpointModeClient() {}

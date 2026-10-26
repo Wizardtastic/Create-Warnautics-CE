@@ -102,7 +102,6 @@ public class HardpointGameTests {
         return placed;
     }
 
-    /** Places any pylon variant from the ceiling onto the shared support cell. */
     private static BlockPos placeRail(
             GameTestHelper helper, FakePlayer player, net.minecraft.world.item.Item item, Block expected) {
         player.setYRot(180.0F);
@@ -376,7 +375,6 @@ public class HardpointGameTests {
         }
     }
 
-    /** Mirrors vanilla variant matching: every entry a key names must equal the state. */
     private static boolean variantMatches(String key, Map<String, String> state) {
         for (String entry : key.split(",")) {
             String[] parts = entry.split("=", 2);

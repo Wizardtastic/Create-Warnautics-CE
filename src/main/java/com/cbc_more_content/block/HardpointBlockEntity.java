@@ -26,12 +26,10 @@ public class HardpointBlockEntity extends BlockEntity {
     private static final String RELEASE_DELAY_KEY = "ReleaseDelay";
     private static final String FIRE_ALL_AT_ONCE_KEY = "FireAllAtOnce";
 
-    /** One entry per rail, kept at {@link #slotCount()} so a mount always has an address. */
     private final List<ItemStack> payloads = new ArrayList<>();
 
     private int releaseDelayTicks;
 
-    /** Bitmask of rails mid-rollout on the dial's interval; transient like the old flag. */
     private int rollingSlots;
 
     private boolean releaseAllAtOnce = true;
@@ -59,7 +57,6 @@ public class HardpointBlockEntity extends BlockEntity {
         }
     }
 
-    /** Live view, one entry per rail; empty stacks are unfilled slots. */
     public List<ItemStack> payloads() {
         return Collections.unmodifiableList(this.payloads);
     }
@@ -68,7 +65,6 @@ public class HardpointBlockEntity extends BlockEntity {
         return slot >= 0 && slot < this.payloads.size() ? this.payloads.get(slot) : ItemStack.EMPTY;
     }
 
-    /** The first mounted round, for single-rail callers and readouts. */
     public ItemStack payload() {
         int slot = this.firstOccupiedSlot();
         return slot < 0 ? ItemStack.EMPTY : this.payloads.get(slot);
@@ -106,7 +102,6 @@ public class HardpointBlockEntity extends BlockEntity {
         return filled;
     }
 
-    /** Mounts onto the first free rail; false when every rail is loaded. */
     public boolean mount(ItemStack stack) {
         int slot = this.firstEmptySlot();
         if (slot < 0 || stack.isEmpty()) {
@@ -117,7 +112,6 @@ public class HardpointBlockEntity extends BlockEntity {
         return true;
     }
 
-    /** Single-rail setter, kept for tests and fixtures. */
     public void setPayload(ItemStack stack) {
         this.ensureSlotCount();
         this.payloads.set(0, stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
@@ -132,7 +126,6 @@ public class HardpointBlockEntity extends BlockEntity {
         this.sync();
     }
 
-    /** Unloads every rail and hands the rounds back to the caller. */
     public List<ItemStack> removePayloads() {
         List<ItemStack> removed = new ArrayList<>();
         for (int slot = 0; slot < this.payloads.size(); slot++) {
@@ -166,7 +159,6 @@ public class HardpointBlockEntity extends BlockEntity {
         this.sync();
     }
 
-    /** The first mounted small bomb pack, if any — the dial's reason to exist. */
     @Nullable
     public ItemStack firstSmallBombPack() {
         for (ItemStack stack : this.payloads) {
@@ -196,7 +188,6 @@ public class HardpointBlockEntity extends BlockEntity {
         return ticks < DropBombBlock.MIN_RELEASE_DELAY_TICKS ? 0 : DropBombBlock.normalizeReleaseDelayTicks(ticks);
     }
 
-    /** One redstone pulse empties every rail at once, or only the first loaded one. */
     public boolean releaseAllAtOnce() {
         return this.releaseAllAtOnce;
     }
@@ -296,7 +287,6 @@ public class HardpointBlockEntity extends BlockEntity {
                 }
             }
         } else if (tag.contains(PAYLOAD_KEY)) {
-            // Pre-rails pylons carried a single payload.
             this.payloads.set(0, ItemStack.parseOptional(registries, tag.getCompound(PAYLOAD_KEY)));
         }
         this.radarLink = tag.contains("RadarX")

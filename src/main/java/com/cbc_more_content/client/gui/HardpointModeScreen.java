@@ -13,13 +13,6 @@ import net.neoforged.api.distmarker.OnlyIn;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
-/**
- * Ask a double or triple rail how a redstone pulse should spend its rounds:
- * every loaded rail at once, or only the next one each pulse.
- * <p>
- * This is the only question a multi-rail pylon has when it carries no small bomb pack —
- * a bundle's interval is the dial's job, and it opens for that instead.
- */
 @OnlyIn(Dist.CLIENT)
 public class HardpointModeScreen extends Screen {
     private static final int PANEL_W = 176;
@@ -116,7 +109,6 @@ public class HardpointModeScreen extends Screen {
                 x + OPTION_W - 1,
                 y + OPTION_H - 1,
                 chosen ? 0xFF3A4033 : (hot ? 0xFF2A2E24 : 0xFF1C1E1B));
-        // A lit edge on the chosen one, so the pick reads at a glance.
         graphics.fill(x + 1, y + 1, x + 3, y + OPTION_H - 1, chosen ? 0xFFB08A3E : 0xFF5C6450);
 
         graphics.drawString(
@@ -138,7 +130,6 @@ public class HardpointModeScreen extends Screen {
                 hot ? 0xFFB036 : 0xE8E2CF);
     }
 
-    /** Shrinks a line rather than letting it run off the panel in longer languages. */
     private void drawFitted(GuiGraphics graphics, String text, int x, int y, int maxWidth, int colour) {
         int width = this.font.width(text);
         if (width <= maxWidth) {

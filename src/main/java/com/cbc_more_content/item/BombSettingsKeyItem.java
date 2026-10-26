@@ -181,11 +181,6 @@ public class BombSettingsKeyItem extends Item {
         }
     }
 
-    /**
-     * The dial is only worth opening where a small bomb pack is mounted — its interval
-     * is the only thing the dial sets. A double or triple rail carrying nothing else
-     * has one question instead: fire every loaded rail at once, or only one per pulse.
-     */
     public void openBundleDial(Level level, BlockPos pos, HardpointBlockEntity hardpoint) {
         ItemStack pack = hardpoint.firstSmallBombPack();
         boolean multiRail =

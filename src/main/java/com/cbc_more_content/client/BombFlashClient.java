@@ -124,6 +124,7 @@ public final class BombFlashClient {
         return switch (size) {
             case SMALL -> 42;
             case SEA -> 48;
+            case LARGE_SEA -> 64;
             case MEDIUM -> 58;
             case LARGE -> 72;
             case MOAB -> 110;
@@ -152,6 +153,7 @@ public final class BombFlashClient {
                     switch (size) {
                         case SMALL -> 18;
                         case SEA -> 20;
+                        case LARGE_SEA -> 27;
                         case MEDIUM -> 24;
                         case LARGE -> 30;
                         case MOAB -> 46;

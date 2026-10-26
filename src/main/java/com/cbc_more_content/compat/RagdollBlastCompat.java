@@ -64,6 +64,7 @@ public final class RagdollBlastCompat {
                 switch (size) {
                     case SMALL -> 12.0f;
                     case SEA -> 14.0f;
+                    case LARGE_SEA -> 18.0f;
                     case MEDIUM -> 15.0f;
                     case LARGE -> 18.0f;
                     case MOAB -> 26.0f;

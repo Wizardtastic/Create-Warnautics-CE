@@ -34,6 +34,16 @@ public final class ModEntityTypes {
                     .setShouldReceiveVelocityUpdates(false)
                     .build("sea_bomb"));
 
+    public static final DeferredHolder<EntityType<?>, EntityType<SeaBombProjectile>> LARGE_SEA_BOMB =
+            ENTITY_TYPES.register("large_sea_bomb", () -> EntityType.Builder.<SeaBombProjectile>of(
+                            SeaBombProjectile::new, MobCategory.MISC)
+                    .sized(BombSize.LARGE_SEA.entitySize, BombSize.LARGE_SEA.entitySize)
+                    .fireImmune()
+                    .clientTrackingRange(16)
+                    .updateInterval(1)
+                    .setShouldReceiveVelocityUpdates(false)
+                    .build("large_sea_bomb"));
+
     public static final DeferredHolder<EntityType<?>, EntityType<DropBombProjectile>> MEDIUM_BOMB =
             dropBomb("medium_bomb", BombSize.MEDIUM);
 
@@ -119,6 +129,8 @@ public final class ModEntityTypes {
                 SMALL_BOMB.get(), CBCMunitionPropertiesHandlers.COMMON_SHELL_BIG_CANNON_PROJECTILE);
         MunitionPropertiesHandler.registerProjectileHandler(
                 SEA_BOMB.get(), CBCMunitionPropertiesHandlers.COMMON_SHELL_BIG_CANNON_PROJECTILE);
+        MunitionPropertiesHandler.registerProjectileHandler(
+                LARGE_SEA_BOMB.get(), CBCMunitionPropertiesHandlers.COMMON_SHELL_BIG_CANNON_PROJECTILE);
         MunitionPropertiesHandler.registerProjectileHandler(
                 MEDIUM_BOMB.get(), CBCMunitionPropertiesHandlers.COMMON_SHELL_BIG_CANNON_PROJECTILE);
         MunitionPropertiesHandler.registerProjectileHandler(

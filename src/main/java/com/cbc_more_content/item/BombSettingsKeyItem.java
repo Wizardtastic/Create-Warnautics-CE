@@ -181,14 +181,31 @@ public class BombSettingsKeyItem extends Item {
         }
     }
 
+    /**
+     * The dial is only worth opening where a small bomb pack is mounted — its interval
+     * is the only thing the dial sets. A double or triple rail carrying nothing else
+     * has one question instead: fire every loaded rail at once, or only one per pulse.
+     */
     public void openBundleDial(Level level, BlockPos pos, HardpointBlockEntity hardpoint) {
+        ItemStack pack = hardpoint.firstSmallBombPack();
+        boolean multiRail =
+                hardpoint.getBlockState().getBlock() instanceof HardpointBlock block && block.slotCount() > 1;
         if (level.isClientSide) {
-            ItemStack payload = hardpoint.payload();
-            int cassette = payload.getItem() instanceof DropBombItem ? DropBombItem.getCassette(payload) : 1;
-            openScreen(pos, hardpoint.releaseDelayTicks(), cassette, true);
-        } else {
+            if (pack != null) {
+                openScreen(pos, hardpoint.releaseDelayTicks(), DropBombItem.getCassette(pack), true);
+            } else if (multiRail) {
+                openModeScreen(pos);
+            }
+            return;
+        }
+        if (pack != null || multiRail) {
             level.playSound(null, pos, SoundEvents.ITEM_FRAME_ROTATE_ITEM, SoundSource.BLOCKS, 0.5f, 1.4f);
         }
+    }
+
+    private static void openModeScreen(BlockPos pos) {
+        ReflectiveDispatcher.invoke(
+                "com.cbc_more_content.client.gui.HardpointModeClient", "open", new Class<?>[] {BlockPos.class}, pos);
     }
 
     private static void openScreen(BlockPos pos, int storedDelay, int cassette, boolean allowAllAtOnce) {

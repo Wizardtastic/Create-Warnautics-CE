@@ -23,6 +23,7 @@ import com.cbc_more_content.client.particle.MissileExhaustParticle;
 import com.cbc_more_content.client.particle.MissileGasParticle;
 import com.cbc_more_content.client.particle.MissileSmokeParticle;
 import com.cbc_more_content.registry.ModBlockEntities;
+import com.cbc_more_content.registry.ModBlocks;
 import com.cbc_more_content.registry.ModEntityTypes;
 import com.cbc_more_content.registry.ModItems;
 import com.cbc_more_content.registry.ModParticles;
@@ -123,6 +124,9 @@ public class CBCMoreContentClient {
                 dev.simulated_team.simulated.content.blocks.rope.rope_connector.RopeConnectorRenderer::new);
         event.registerEntityRenderer(ModEntityTypes.SMALL_BOMB.get(), BigCannonProjectileRenderer::new);
         event.registerEntityRenderer(ModEntityTypes.SEA_BOMB.get(), SeaBombRenderer::new);
+        event.registerEntityRenderer(
+                ModEntityTypes.LARGE_SEA_BOMB.get(),
+                context -> new SeaBombRenderer(context, ModBlocks.LARGE_SEA_BOMB.get()));
         event.registerEntityRenderer(ModEntityTypes.MEDIUM_BOMB.get(), BigCannonProjectileRenderer::new);
         event.registerEntityRenderer(ModEntityTypes.LARGE_BOMB.get(), BigCannonProjectileRenderer::new);
         event.registerEntityRenderer(ModEntityTypes.MOAB.get(), MoabRenderer::new);

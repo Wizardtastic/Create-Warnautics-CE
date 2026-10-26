@@ -47,6 +47,10 @@ public final class ModItems {
     public static final DeferredItem<DropBombItem> SEA_BOMB = ITEMS.register(
             "sea_bomb", () -> new DropBombItem(ModBlocks.SEA_BOMB.get(), new Item.Properties().stacksTo(48)));
 
+    public static final DeferredItem<DropBombItem> LARGE_SEA_BOMB = ITEMS.register(
+            "large_sea_bomb",
+            () -> new DropBombItem(ModBlocks.LARGE_SEA_BOMB.get(), new Item.Properties().stacksTo(16)));
+
     public static final DeferredItem<DropBombItem> MEDIUM_BOMB = ITEMS.register(
             "medium_bomb", () -> new DropBombItem(ModBlocks.MEDIUM_BOMB.get(), new Item.Properties().stacksTo(32)));
 
@@ -84,6 +88,12 @@ public final class ModItems {
     public static final DeferredItem<MissileLaunchpadItem> MISSILE_LAUNCHPAD = ITEMS.register(
             "missile_launchpad",
             () -> new MissileLaunchpadItem(ModBlocks.MISSILE_LAUNCHPAD.get(), new Item.Properties()));
+
+    public static final DeferredItem<HardpointItem> DOUBLE_HARDPOINT = ITEMS.register(
+            "double_hardpoint", () -> new HardpointItem(ModBlocks.DOUBLE_HARDPOINT.get(), new Item.Properties()));
+
+    public static final DeferredItem<HardpointItem> TRIPLE_HARDPOINT = ITEMS.register(
+            "triple_hardpoint", () -> new HardpointItem(ModBlocks.TRIPLE_HARDPOINT.get(), new Item.Properties()));
 
     public static final DeferredItem<Item> MUSIC_DISC_BREAKER_OF_SKIES = ITEMS.register(
             "music_disc_breaker_of_skies",

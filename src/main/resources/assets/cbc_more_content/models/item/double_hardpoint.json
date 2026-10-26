@@ -1,0 +1,65 @@
+{
+  "parent": "cbc_more_content:block/double_hardpoint",
+  "display": {
+    "thirdperson_righthand": {
+      "rotation": [
+        48,
+        0,
+        0
+      ],
+      "translation": [
+        0,
+        3.25,
+        1.25
+      ],
+      "scale": [
+        0.45,
+        0.45,
+        0.45
+      ]
+    },
+    "thirdperson_lefthand": {
+      "rotation": [
+        48,
+        0,
+        0
+      ],
+      "translation": [
+        0,
+        3.25,
+        1.25
+      ],
+      "scale": [
+        0.45,
+        0.45,
+        0.45
+      ]
+    },
+    "firstperson_righthand": {
+      "translation": [
+        0,
+        4.5,
+        0
+      ]
+    },
+    "firstperson_lefthand": {
+      "translation": [
+        0,
+        4.5,
+        0
+      ]
+    },
+    "ground": {
+      "translation": [
+        0,
+        3.25,
+        0
+      ],
+      "scale": [
+        0.31,
+        0.31,
+        0.31
+      ]
+    }
+  }
+}

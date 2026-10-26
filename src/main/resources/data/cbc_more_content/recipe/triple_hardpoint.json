@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "key": {
+    "H": {
+      "item": "cbc_more_content:hardpoint"
+    },
+    "S": {
+      "item": "create:shaft"
+    }
+  },
+  "pattern": [
+    "H H",
+    "H S"
+  ],
+  "result": {
+    "count": 1,
+    "id": "cbc_more_content:triple_hardpoint"
+  }
+}

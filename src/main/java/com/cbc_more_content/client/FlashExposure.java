@@ -209,6 +209,7 @@ public final class FlashExposure {
         return switch (size) {
             case SMALL -> 140;
             case SEA -> 160;
+            case LARGE_SEA -> 240;
             case MEDIUM -> 240;
             case LARGE -> 280;
             case MOAB -> 420;
@@ -219,6 +220,7 @@ public final class FlashExposure {
         return switch (size) {
             case SMALL -> 5;
             case SEA -> 7;
+            case LARGE_SEA -> 11;
             case MEDIUM -> 10;
             case LARGE -> 14;
             case MOAB -> 22;
@@ -229,6 +231,7 @@ public final class FlashExposure {
         return switch (size) {
             case SMALL -> 4;
             case SEA -> 2.5f;
+            case LARGE_SEA -> 5.0f;
             case MEDIUM -> 7;
             case LARGE -> 10;
             case MOAB -> 9;

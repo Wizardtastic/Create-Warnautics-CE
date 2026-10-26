@@ -3,6 +3,7 @@ package com.cbc_more_content.network;
 import com.cbc_more_content.block.Aim9BlockEntity;
 import com.cbc_more_content.block.C4BlockEntity;
 import com.cbc_more_content.block.DropBombBlock;
+import com.cbc_more_content.block.HardpointBlock;
 import com.cbc_more_content.block.HardpointBlockEntity;
 import com.cbc_more_content.block.MissileLaunchpadBlock;
 import com.cbc_more_content.block.MissileLaunchpadBlockEntity;
@@ -61,6 +62,10 @@ public final class ModNetworking {
                         ConfigureBombPayload.TYPE,
                         ConfigureBombPayload.STREAM_CODEC,
                         ModNetworking::handleConfigureBomb)
+                .playToServer(
+                        HardpointModePayload.TYPE,
+                        HardpointModePayload.STREAM_CODEC,
+                        ModNetworking::handleHardpointMode)
                 .playToServer(
                         SirenSettingsPayload.TYPE,
                         SirenSettingsPayload.STREAM_CODEC,
@@ -156,6 +161,26 @@ public final class ModNetworking {
                 hardpoint.setReleaseDelayTicks(payload.delayTicks());
                 level.playSound(null, pos, SoundEvents.STONE_BUTTON_CLICK_ON, SoundSource.BLOCKS, 0.45f, 1.25f);
             }
+        });
+    }
+
+    private static void handleHardpointMode(HardpointModePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) {
+                return;
+            }
+            Level level = player.level();
+            BlockPos pos = payload.pos();
+            if (!canAccess(player, pos) || !holdsSettingsKey(player)) {
+                return;
+            }
+            if (!(level.getBlockEntity(pos) instanceof HardpointBlockEntity hardpoint)
+                    || !(hardpoint.getBlockState().getBlock() instanceof HardpointBlock hardpointBlock)
+                    || hardpointBlock.slotCount() < 2) {
+                return;
+            }
+            hardpoint.setReleaseAllAtOnce(payload.fireAllAtOnce());
+            level.playSound(null, pos, SoundEvents.STONE_BUTTON_CLICK_ON, SoundSource.BLOCKS, 0.45f, 1.25f);
         });
     }
 

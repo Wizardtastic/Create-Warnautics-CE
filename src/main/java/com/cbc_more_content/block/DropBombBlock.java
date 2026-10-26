@@ -6,6 +6,7 @@ import com.cbc_more_content.compat.SableDropCompat;
 import com.cbc_more_content.config.WarnauticsConfig;
 import com.cbc_more_content.effects.BombSympatheticDetonation;
 import com.cbc_more_content.item.DropBombItem;
+import com.cbc_more_content.munitions.DropBombProjectile;
 import com.cbc_more_content.util.DropBombUtil;
 import com.cbc_more_content.util.WaterPlacement;
 import com.mojang.serialization.Codec;
@@ -192,7 +193,7 @@ public class DropBombBlock extends Block implements IWrenchable, ChainExplosiveB
      * must not be destroyed by water replacing its placement space.
      */
     protected boolean canSurvive(BlockState state, LevelReader level, BlockPos pos) {
-        return this.size == BombSize.SEA || super.canSurvive(state, level, pos);
+        return this.size.isSeaBomb() || super.canSurvive(state, level, pos);
     }
 
     @Override
@@ -206,7 +207,7 @@ public class DropBombBlock extends Block implements IWrenchable, ChainExplosiveB
         // Do not delegate fluid/support updates for sea torpedoes: vanilla's
         // survival update can replace the block with air when water flows into
         // the position, even though the torpedo is intentionally water-safe.
-        if (this.size == BombSize.SEA) {
+        if (this.size.isSeaBomb()) {
             return state;
         }
         return super.updateShape(state, direction, neighborState, level, pos, neighborPos);
@@ -337,6 +338,7 @@ public class DropBombBlock extends Block implements IWrenchable, ChainExplosiveB
                 switch (this.size) {
                     case SMALL -> 3;
                     case SEA -> 4;
+                    case LARGE_SEA -> 6;
                     case MEDIUM -> 5;
                     case LARGE -> 7;
                     case MOAB -> 10;
@@ -571,8 +573,8 @@ public class DropBombBlock extends Block implements IWrenchable, ChainExplosiveB
         return SableDropCompat.resolveLaunch(level, pos, spawn, velocity, noseVec);
     }
 
-    protected void launchPrepared(BombSize size, SableDropCompat.LaunchFrame frame) {
-        DropBombUtil.spawn(size, frame, null);
+    protected DropBombProjectile launchPrepared(BombSize size, SableDropCompat.LaunchFrame frame) {
+        DropBombProjectile bomb = DropBombUtil.spawn(size, frame, null);
         frame.level()
                 .playSound(
                         null,
@@ -583,6 +585,7 @@ public class DropBombBlock extends Block implements IWrenchable, ChainExplosiveB
                         SoundSource.BLOCKS,
                         0.8f,
                         0.85f);
+        return bomb;
     }
 
     /**

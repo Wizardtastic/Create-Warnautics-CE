@@ -75,6 +75,8 @@ public final class DropBombUtil {
         DropBombProjectile bomb;
         if (size == BombSize.SEA) {
             bomb = ModEntityTypes.SEA_BOMB.get().create(level);
+        } else if (size == BombSize.LARGE_SEA) {
+            bomb = ModEntityTypes.LARGE_SEA_BOMB.get().create(level);
         } else {
             EntityType<DropBombProjectile> type =
                     switch (size) {
@@ -82,7 +84,7 @@ public final class DropBombUtil {
                         case MEDIUM -> ModEntityTypes.MEDIUM_BOMB.get();
                         case LARGE -> ModEntityTypes.LARGE_BOMB.get();
                         case MOAB -> ModEntityTypes.MOAB.get();
-                        case SEA -> throw new IllegalStateException("unreachable");
+                        case SEA, LARGE_SEA -> throw new IllegalStateException("unreachable");
                     };
             bomb = type.create(level);
         }

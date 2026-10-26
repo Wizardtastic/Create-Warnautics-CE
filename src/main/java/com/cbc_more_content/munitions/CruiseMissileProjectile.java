@@ -11,6 +11,7 @@ import com.cbc_more_content.effects.BombExplosionHandler;
 import com.cbc_more_content.radar.InterceptSettings;
 import com.cbc_more_content.radar.InterceptSettingsStore;
 import com.cbc_more_content.registry.ModSounds;
+import com.cbc_more_content.util.DropGraceVisibility;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
@@ -718,7 +719,10 @@ public class CruiseMissileProjectile extends Entity {
     }
 
     private boolean canHit(Entity entity) {
-        return entity.isAlive() && entity.isPickable() && !entity.isSpectator();
+        return entity.isAlive()
+                && entity.isPickable()
+                && !entity.isSpectator()
+                && !DropGraceVisibility.isInGrace(entity);
     }
 
     private void refreshChunkTickets() {

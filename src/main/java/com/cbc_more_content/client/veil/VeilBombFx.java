@@ -213,6 +213,7 @@ public final class VeilBombFx {
                 switch (flash.size) {
                     case SMALL -> 16;
                     case SEA -> 20;
+                    case LARGE_SEA -> 32;
                     case MEDIUM -> 28;
                     case LARGE -> 38;
                     case MOAB -> 58;
@@ -225,6 +226,7 @@ public final class VeilBombFx {
                 switch (flash.size) {
                     case SMALL -> 13;
                     case SEA -> 17;
+                    case LARGE_SEA -> 28;
                     case MEDIUM -> 25;
                     case LARGE -> 34;
                     case MOAB -> 52;

@@ -1,0 +1,36 @@
+{
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": true,
+  "category": "misc",
+  "key": {
+    "C": {
+      "item": "createbigcannons:powder_charge"
+    },
+    "E": {
+      "item": "create:electron_tube"
+    },
+    "F": {
+      "item": "create:brass_sheet"
+    },
+    "P": {
+      "item": "create:sturdy_sheet"
+    },
+    "X": {
+      "tag": "createbigcannons:high_explosive_materials"
+    },
+    "Z": {
+      "item": "createbigcannons:impact_fuze"
+    }
+  },
+  "pattern": [
+    "  EZE  ",
+    " PXXXP ",
+    "FCXCXCF",
+    " PXXXP ",
+    "  CCC  "
+  ],
+  "result": {
+    "count": 1,
+    "id": "cbc_more_content:aim9"
+  }
+}

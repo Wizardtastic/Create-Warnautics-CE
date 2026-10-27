@@ -71,11 +71,17 @@ public class CruiseMissileProjectile extends Entity {
 
     private static final double DROP_SPEED = 0.6D;
 
-    private static final double TURN_RATE = 0.095D;
+    private static final double TURN_RATE = 0.085D;
+
+    private static final double TURN_EASING = 0.3D;
+
+    private static final double ROUTE_FADE_RANGE = 55.0D;
+
+    private static final double ROUTE_AMPLITUDE = 6.0D;
 
     private static final double LOOKAHEAD = 36.0D;
     private static final double TERMINAL_RANGE = 44.0D;
-    private static final double TERMINAL_TURN_RATE = 0.22D;
+    private static final double TERMINAL_TURN_RATE = 0.20D;
     private static final double FUSE_RANGE = 2.4D;
     private static final double JINK_DOT = 0.55D;
     private static final float JINK_CHANCE = 0.4f;
@@ -95,6 +101,7 @@ public class CruiseMissileProjectile extends Entity {
     private boolean waterEntered;
     private boolean trackingHull;
     private int shaken;
+    private double turnRate;
 
     @Nullable
     private Vec3 lastAim;
@@ -361,7 +368,6 @@ public class CruiseMissileProjectile extends Entity {
 
     private void spoolUp() {
         this.igniting--;
-        // The deck carries the round while it waits, exactly as the hull carries the pad.
         this.setDeltaMovement(this.carrierVelocity);
         if (this.carrierVelocity.lengthSqr() > 1.0E-6D) {
             this.setPos(this.position().add(this.carrierVelocity));
@@ -380,7 +386,6 @@ public class CruiseMissileProjectile extends Entity {
                         SoundSource.HOSTILE,
                         4.0f,
                         0.95f);
-        // No coasting: the first boost step goes down on the tick the rail lets go.
         Vec3 motion = this.padUp.scale(LIFT_ACCEL).add(this.carrierVelocity);
         this.setDeltaMovement(motion);
         this.setPos(this.position().add(motion));
@@ -541,6 +546,10 @@ public class CruiseMissileProjectile extends Entity {
             }
             shaped = shaped.add(side.scale(Math.cos(angle) * radius)).add(up.scale(Math.sin(angle) * radius));
         }
+        if (this.salvoId == null) {
+            shaped = shaped.add(MissileRoutes.drift(
+                    this.getUUID(), toTarget, this.poweredTicks, distance, ROUTE_FADE_RANGE, ROUTE_AMPLITUDE));
+        }
         Vec3 wanted = shaped.subtract(this.position()).normalize();
         if (distance > TERMINAL_RANGE) {
             Vec3 separated = this.separate(this.avoid(heading, wanted));
@@ -602,7 +611,6 @@ public class CruiseMissileProjectile extends Entity {
             if (hunted != null && hunted.isAlive()) {
                 return this.dispersedAim(hunted.position(), 1.8);
             }
-            // The quarry is gone; a launch point still on file is better than flying on blind.
             this.targetEntityId = null;
         }
         if (this.targeting.guidance() == Guidance.INTERCEPT) {
@@ -687,8 +695,9 @@ public class CruiseMissileProjectile extends Entity {
         return wanted.add(lift.scale(Mth.clamp(closeness, 0.0D, 1.0D) * 1.4D)).normalize();
     }
 
-    private static Vec3 turnToward(Vec3 from, Vec3 to, double maxRadians) {
-        return MissileCollision.turn(from, to, maxRadians);
+    private Vec3 turnToward(Vec3 from, Vec3 to, double ceiling) {
+        this.turnRate = MissileCollision.easeTurnRate(this.turnRate, ceiling, TURN_EASING);
+        return MissileCollision.turn(from, to, this.turnRate);
     }
 
     private boolean checkImpact(Vec3 from, Vec3 to) {

@@ -1,0 +1,40 @@
+{
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": true,
+  "category": "misc",
+  "key": {
+    "C": {
+      "item": "createbigcannons:powder_charge"
+    },
+    "I": {
+      "tag": "c:plates/iron"
+    },
+    "N": {
+      "tag": "c:ingots/cast_iron"
+    },
+    "P": {
+      "item": "create:sturdy_sheet"
+    },
+    "X": {
+      "tag": "createbigcannons:high_explosive_materials"
+    },
+    "Z": {
+      "item": "createbigcannons:impact_fuze"
+    }
+  },
+  "pattern": [
+    "   NZN   ",
+    "  PXXXP  ",
+    " IXXXXXI ",
+    "PXXXXXXXP",
+    "IXXCCCXXI",
+    "IXXCCCXXI",
+    " PXXXXXP ",
+    "  IXXXI  ",
+    "  PCCCP  "
+  ],
+  "result": {
+    "count": 1,
+    "id": "cbc_more_content:moab"
+  }
+}

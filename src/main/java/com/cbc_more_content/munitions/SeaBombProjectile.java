@@ -1,5 +1,6 @@
 package com.cbc_more_content.munitions;
 
+import com.cbc_more_content.bomb.BombSize;
 import com.cbc_more_content.registry.ModSounds;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleOptions;
@@ -20,6 +21,7 @@ import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -41,6 +43,10 @@ public class SeaBombProjectile extends DropBombProjectile {
 
     private static final float UNDERWATER_ENTITY_POWER = 1.25f;
 
+    private static final double LARGE_HULL_HALF_LENGTH = 1.0D;
+
+    private static final double LARGE_HULL_HALF_WIDTH = 0.44D;
+
     private double swimDistance;
     private int sinkTicks;
     private int buzzCooldown;
@@ -50,6 +56,38 @@ public class SeaBombProjectile extends DropBombProjectile {
 
     public SeaBombProjectile(EntityType<? extends DropBombProjectile> type, Level level) {
         super(type, level);
+    }
+
+    @Override
+    protected AABB makeBoundingBox() {
+        if (this.bombSize() != BombSize.LARGE_SEA) {
+            return super.makeBoundingBox();
+        }
+        Vec3 axis = this.hullAxis();
+        Vec3 centre = this.position();
+        double halfX = hullHalfExtent(axis.x);
+        double halfY = hullHalfExtent(axis.y);
+        double halfZ = hullHalfExtent(axis.z);
+        return new AABB(
+                centre.x - halfX,
+                centre.y - halfY,
+                centre.z - halfZ,
+                centre.x + halfX,
+                centre.y + halfY,
+                centre.z + halfZ);
+    }
+
+    private static double hullHalfExtent(double axisComponent) {
+        double across = Math.sqrt(Math.max(0.0D, 1.0D - axisComponent * axisComponent));
+        return Math.abs(axisComponent) * LARGE_HULL_HALF_LENGTH + across * LARGE_HULL_HALF_WIDTH;
+    }
+
+    private Vec3 hullAxis() {
+        Vec3 axis = this.getOrientation();
+        if (axis.lengthSqr() < 1.0E-6D) {
+            axis = this.getDeltaMovement();
+        }
+        return axis.lengthSqr() < 1.0E-6D ? new Vec3(0.0D, -1.0D, 0.0D) : axis.normalize();
     }
 
     @Override

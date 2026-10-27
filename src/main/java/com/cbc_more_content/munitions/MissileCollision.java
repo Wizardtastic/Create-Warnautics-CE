@@ -25,8 +25,6 @@ public final class MissileCollision {
             var box = other.getBoundingBox().inflate(.18);
             return box.contains(from) ? from : box.clip(from, to).orElse(null);
         }
-        // Use slender oriented airframes, not their axis-aligned entity tracking boxes.
-        // Transform to the other round's translating frame so fast crossing shots cannot tunnel.
         Vec3 relative = to.subtract(from).subtract(other.getDeltaMovement());
         Vec3 a = heading(missile).scale(1.35);
         Vec3 b = heading(other).scale(1.35);
@@ -55,6 +53,10 @@ public final class MissileCollision {
         double second = Mth.clamp((b * first + e) / c, 0, 1);
         first = Mth.clamp((b * second - d) / a, 0, 1);
         return p.add(u.scale(first)).distanceToSqr(r.add(v.scale(second)));
+    }
+
+    public static double easeTurnRate(double current, double ceiling, double easing) {
+        return current + (ceiling - current) * easing;
     }
 
     public static Vec3 turn(Vec3 from, Vec3 to, double radians) {

@@ -51,10 +51,6 @@ public final class MissileGuidanceError {
     }
 
     private static double sample(UUID id, long salt) {
-        long value = id.getLeastSignificantBits() ^ Long.rotateLeft(id.getMostSignificantBits(), 23) ^ salt;
-        value = (value ^ (value >>> 30)) * 0xBF58476D1CE4E5B9L;
-        value = (value ^ (value >>> 27)) * 0x94D049BB133111EBL;
-        value ^= value >>> 31;
-        return (value >>> 11) * 0x1.0p-53;
+        return MissileRoutes.uniform(id, salt);
     }
 }

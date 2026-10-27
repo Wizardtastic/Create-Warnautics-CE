@@ -36,10 +36,22 @@ public class Aim9Projectile extends Entity {
     private static final double DROP_SPEED = 0.6D;
 
     private static final double APPROACH_RANGE = 36;
-    private static final double RECOVERY_TURN_RATE = .14;
-    private static final double EARLY_TURN_RATE = .35;
+    private static final double RECOVERY_TURN_RATE = .10;
+    private static final double EARLY_TURN_RATE = .20;
 
-    private static final double TURN_RATE = .55;
+    private static final double TURN_RATE = .32;
+
+    private static final double TURN_EASING = .4;
+
+    private static final double ROUTE_FADE_RANGE = 32.0D;
+
+    private static final double ROUTE_AMPLITUDE = 3.0D;
+    private static final double ROUTE_LOOKAHEAD = 24.0D;
+
+    private static final double SEPARATION_RANGE = 6.0D;
+
+    private static final double SEPARATION_STRENGTH = 1.4D;
+
     private static final int TICKET_DISTANCE = 4;
     private static final EntityDataAccessor<Boolean> POWERED =
             SynchedEntityData.defineId(Aim9Projectile.class, EntityDataSerializers.BOOLEAN);
@@ -58,6 +70,7 @@ public class Aim9Projectile extends Entity {
     private boolean dropped;
 
     private int motorTicks;
+    private double turnRate;
     private int lostTicks;
     private Vec3 carrierVelocity = Vec3.ZERO;
     private Vec3 blastDrift = Vec3.ZERO;
@@ -204,13 +217,15 @@ public class Aim9Projectile extends Entity {
                                 target.position().subtract(position()).add(approachOffset),
                                 target.getDeltaMovement(),
                                 speed);
-                heading = MissileCollision.turn(
+                aim = route(aim, position().distanceTo(target.position()));
+                heading = turnToward(
                         heading, aim, recovering ? RECOVERY_TURN_RATE : motorTicks < 10 ? EARLY_TURN_RATE : TURN_RATE);
             } else if (hullCentre != null) {
                 Vec3 shipVelocity = lastShipCentre == null ? Vec3.ZERO : hullCentre.subtract(lastShipCentre);
                 lastShipCentre = hullCentre;
                 Vec3 aim = lead(hullCentre.subtract(position()), shipVelocity, speed);
-                heading = MissileCollision.turn(heading, aim, motorTicks < 10 ? EARLY_TURN_RATE : TURN_RATE);
+                aim = route(aim, position().distanceTo(hullCentre));
+                heading = turnToward(heading, aim, motorTicks < 10 ? EARLY_TURN_RATE : TURN_RATE);
             }
             motion = heading.scale(speed).add(carrierVelocity);
             carrierVelocity = carrierVelocity.scale(.9);
@@ -316,6 +331,48 @@ public class Aim9Projectile extends Entity {
                 approachOffset = Vec3.ZERO;
             }
         }
+    }
+
+    private Vec3 route(Vec3 aim, double range) {
+        Vec3 drift = MissileRoutes.drift(getUUID(), aim, tickCount, range, ROUTE_FADE_RANGE, ROUTE_AMPLITUDE);
+        Vec3 wanted = aim;
+        if (drift.lengthSqr() > 1.0E-6D) {
+            wanted = aim.scale(ROUTE_LOOKAHEAD).add(drift).normalize();
+        }
+        return separate(wanted);
+    }
+
+    private Vec3 separate(Vec3 wanted) {
+        Vec3 force = Vec3.ZERO;
+        for (Aim9Projectile other : this.level()
+                .getEntitiesOfClass(
+                        Aim9Projectile.class,
+                        this.getBoundingBox().inflate(SEPARATION_RANGE),
+                        other -> other != this && other.isAlive())) {
+            Vec3 offset = this.position().subtract(other.position());
+            Vec3 relative = this.getDeltaMovement().subtract(other.getDeltaMovement());
+            double time = relative.lengthSqr() < 1.0E-4D
+                    ? 0.0D
+                    : Mth.clamp(-offset.dot(relative) / relative.lengthSqr(), 0.0D, 3.0D);
+            Vec3 future = offset.add(relative.scale(time));
+            double distance = Math.min(offset.length(), future.length());
+            if (distance >= SEPARATION_RANGE) {
+                continue;
+            }
+            Vec3 away = future.lengthSqr() > .04D ? future : offset;
+            if (away.lengthSqr() < 1.0E-4D) {
+                away = new Vec3(this.getUUID().compareTo(other.getUUID()) < 0 ? 1.0D : -1.0D, 0.0D, 0.0D);
+            }
+            force = force.add(away.normalize().scale((SEPARATION_RANGE - distance) / SEPARATION_RANGE));
+        }
+        return force.lengthSqr() < 1.0E-6D
+                ? wanted
+                : wanted.add(force.scale(SEPARATION_STRENGTH)).normalize();
+    }
+
+    private Vec3 turnToward(Vec3 heading, Vec3 aim, double ceiling) {
+        this.turnRate = MissileCollision.easeTurnRate(this.turnRate, ceiling, TURN_EASING);
+        return MissileCollision.turn(heading, aim, this.turnRate);
     }
 
     private static Vec3 lead(Vec3 offset, Vec3 velocity, double speed) {
